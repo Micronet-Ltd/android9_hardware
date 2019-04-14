@@ -77,6 +77,12 @@ char const*const BLUE_BLINK_FILE
 char const*const PERSISTENCE_FILE
         = "/sys/class/graphics/fb0/msm_fb_persist_mode";
 
+char const*const VLED_0
+        = "/sys/class/leds/vled0/brightness";
+
+char const*const VLED_1
+        = "/sys/class/leds/vled1/brightness";
+
 /**
  * device methods
  */
@@ -109,11 +115,13 @@ write_int(char const* path, int value)
     }
 }
 
+#if 0
 static int
 is_lit(struct light_state_t const* state)
 {
     return state->color & 0x00ffffff;
 }
+#endif
 
 static int
 rgb_to_brightness(struct light_state_t const* state)
@@ -236,14 +244,24 @@ set_speaker_light_locked(struct light_device_t* dev,
     return 0;
 }
 
+static int set_light_battery(struct light_device_t* dev,struct light_state_t const* state);
+
 static void
 handle_speaker_battery_locked(struct light_device_t* dev)
 {
+    if (dev->set_light == set_light_battery) {
+        set_speaker_light_locked(dev, &g_battery);
+    } else {
+        set_speaker_light_locked(dev, &g_notification);
+    }
+#if 0
     if (is_lit(&g_battery)) {
         set_speaker_light_locked(dev, &g_battery);
     } else {
         set_speaker_light_locked(dev, &g_notification);
     }
+#endif
+
 }
 
 static int
@@ -252,6 +270,7 @@ set_light_battery(struct light_device_t* dev,
 {
     pthread_mutex_lock(&g_lock);
     g_battery = *state;
+    g_battery.color &= 0xFF0000;
     handle_speaker_battery_locked(dev);
     pthread_mutex_unlock(&g_lock);
     return 0;
@@ -263,6 +282,7 @@ set_light_notifications(struct light_device_t* dev,
 {
     pthread_mutex_lock(&g_lock);
     g_notification = *state;
+    g_notification.color &= 0x00FFFF;
     handle_speaker_battery_locked(dev);
     pthread_mutex_unlock(&g_lock);
     return 0;
@@ -293,6 +313,48 @@ set_light_buttons(struct light_device_t* dev,
     }
     pthread_mutex_lock(&g_lock);
     err = write_int(BUTTON_FILE, state->color & 0xFF);
+    pthread_mutex_unlock(&g_lock);
+    return err;
+}
+
+static int
+set_light_keyboard(struct light_device_t* dev,
+        struct light_state_t const* state)
+{
+    int err = 0;
+    unsigned int adj_color;
+
+    if(!dev) {
+        return -1;
+    }
+
+    unsigned int color = state->color & 0x00FFFFFF;
+
+    if ( (color & 0x00FF0000) <= 0x000F0000 ) { // make sure RED > 0F
+        color |= 0x000F0000;
+    }
+    if ( (color & 0x0000FF00) <= 0x00000F00 ) { // make sure GREEN > 0F
+        color |= 0x00000F00;
+    }
+    if ( (color & 0x000000FF) <= 0x0000000F ) { // make sure BLUE > 0F
+        color |= 0x0000000F;
+    }
+
+    // the RGB part in ARGB remains the same, the A part is replaced by rgb_to_brightness
+    adj_color = (color & 0x00FFFFFF) +((rgb_to_brightness(state)/2)<<24 & 0xFF000000);
+    
+
+    pthread_mutex_lock(&g_lock);
+    err = write_int(VLED_0, adj_color);
+    if ( err < 0 ) {
+        ALOGE("%s: Writing (as unsigned int) to vled 0 failed: errno %d, error: %s \n",__func__,errno,strerror(errno));
+    }
+
+    err = write_int(VLED_1, adj_color);
+    if ( err < 0 ) {
+        ALOGE("%s: Writing (as unsigned int) to vled 1 failed: errno %d, error: %s \n",__func__,errno,strerror(errno));
+    }
+
     pthread_mutex_unlock(&g_lock);
     return err;
 }
@@ -337,7 +399,9 @@ static int open_lights(const struct hw_module_t* module, char const* name,
     }
     else if (0 == strcmp(LIGHT_ID_ATTENTION, name))
         set_light = set_light_attention;
-    else
+    else if (0 == strcmp(LIGHT_ID_KEYBOARD, name)){
+        set_light = set_light_keyboard;
+    } else
         return -EINVAL;
 
     pthread_once(&g_init, init_globals);
