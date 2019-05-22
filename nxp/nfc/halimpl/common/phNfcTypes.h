@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,15 +17,22 @@
 #ifndef PHNFCTYPES_H
 #define PHNFCTYPES_H
 
-#include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
+#include <stdbool.h>
+#include "Nxp_Features.h"
 
+#ifndef true
+#define true (0x01) /* Logical True Value */
+#endif
 #ifndef TRUE
 #define TRUE (0x01) /* Logical True Value */
+#endif
+#ifndef false
+#define false (0x00) /* Logical False Value */
 #endif
 #ifndef FALSE
 #define FALSE (0x00) /* Logical False Value */
@@ -33,6 +40,7 @@
 typedef uint8_t utf8_t;     /* UTF8 Character String */
 typedef uint8_t bool_t;     /* boolean data type */
 typedef uint16_t NFCSTATUS; /* Return values */
+
 #define STATIC static
 
 #define PHNFC_MAX_UID_LENGTH 0x0AU /* Maximum UID length expected */
@@ -140,7 +148,7 @@ typedef struct phNfc_sSupProtocol {
   unsigned int NFC : 1;         /* Protocol NFC. */
   unsigned int Jewel : 1;       /* Protocol Innovision Jewel Tag. or Any T1T*/
   unsigned int
-      Desfire : 1;          /*TRUE indicates specified feature (mapping
+      Desfire : 1;          /*true indicates specified feature (mapping
                             or formatting)for DESFire tag supported else not supported.*/
   unsigned int Kovio : 1;   /* Protocol Kovio Tag*/
   unsigned int HID : 1;     /* Protocol HID(Picopass) Tag*/
@@ -297,7 +305,7 @@ typedef struct phNfc_sTransceiveInfo {
                        */
   uint8_t bWordCount;  /* Number of words to be read or written */
 } phNfc_sTransceiveInfo_t;
-
+#if (NXP_EXTNS == TRUE)
 typedef enum p61_access_state {
   P61_STATE_INVALID = 0x0000,
   P61_STATE_IDLE = 0x0100,         /* p61 is free to use */
@@ -315,6 +323,14 @@ typedef enum p61_access_state {
   P61_STATE_DWP_SVDD_SYNC_END = 0x0008    /*ESE_VDD is Low by Nfc*/
 } p61_access_state_t;
 
-#define UNUSED(X) (void)(X);
+typedef enum jcop_dwnld_state {
+  JCP_DWNLD_IDLE = P61_STATE_JCP_DWNLD, /* jcop dwnld is not ongoing*/
+  JCP_DWNLD_INIT = 0x8010,              /* jcop dwonload init state*/
+  JCP_DWNLD_START = 0x8020,             /* download started */
+  JCP_SPI_DWNLD_COMPLETE = 0x8040, /* jcop download complete in spi interface*/
+  JCP_DWP_DWNLD_COMPLETE = 0x8080, /* jcop download complete */
+} jcop_dwnld_state_t;
+#endif
+#define UNUSED(X) (void) (X);
 
 #endif /* PHNFCTYPES_H */

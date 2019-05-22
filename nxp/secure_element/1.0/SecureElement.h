@@ -64,12 +64,12 @@ struct SecureElement : public ISecureElement, public hidl_death_recipient {
 
  private:
   uint8_t mOpenedchannelCount = 0;
-  bool mIsEseInitialized = false;
   bool mOpenedChannels[MAX_LOGICAL_CHANNELS];
   static sp<V1_0::ISecureElementHalCallback> mCallbackV1_0;
   Return<::android::hardware::secure_element::V1_0::SecureElementStatus>
   seHalDeInit();
   ESESTATUS seHalInit();
+  bool isSeInitialized();
 };
 
 }  // namespace implementation

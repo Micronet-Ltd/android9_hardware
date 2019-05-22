@@ -18,6 +18,8 @@
 #define LOG_TAG "NxpEseHal"
 #include <log/log.h>
 
+#include "StateMachine.h"
+#include "StateMachineInfo.h"
 #include <cutils/properties.h>
 #include <ese_config.h>
 #include <phNxpEseFeatures.h>
@@ -27,8 +29,6 @@
 #include <phNxpEse_Internal.h>
 
 #define RECIEVE_PACKET_SOF 0xA5
-#define CHAINED_PACKET_WITHSEQN 0x60
-#define CHAINED_PACKET_WITHOUTSEQN 0x20
 #define PH_PAL_ESE_PRINT_PACKET_TX(data, len) \
   ({ phPalEse_print_packet("SEND", data, len); })
 #define PH_PAL_ESE_PRINT_PACKET_RX(data, len) \
@@ -42,17 +42,18 @@ static ESESTATUS phNxpEse_setJcopDwnldState(phNxpEse_JcopDwnldState state);
 #ifdef NXP_NFCC_SPI_FW_DOWNLOAD_SYNC
 static ESESTATUS phNxpEse_checkFWDwnldStatus(void);
 #endif
-static void phNxpEse_GetMaxTimer(unsigned long* pMaxTimer);
+extern void phNxpEse_secureTimerStop();
+void phNxpEse_GetMaxTimer(unsigned long *pMaxTimer);
 #ifdef NXP_SECURE_TIMER_SESSION
 static unsigned char* phNxpEse_GgetTimerTlvBuffer(unsigned char* timer_buffer,
                                                   unsigned int value);
 #endif
-static int poll_sof_chained_delay = 0;
 /*********************** Global Variables *************************************/
 
 /* ESE Context structure */
 phNxpEse_Context_t nxpese_ctxt;
 bool ese_debug_enabled = true;
+SyncEvent gSpiOpenLock;
 
 /******************************************************************************
  * Function         phNxpLog_InitializeLogLevel
@@ -170,8 +171,21 @@ ESESTATUS phNxpEse_open(phNxpEse_initParams initParams) {
   ESESTATUS wSpmStatus = ESESTATUS_SUCCESS;
   spm_state_t current_spm_state = SPM_STATE_INVALID;
 #endif
+  ALOGD("%s: Enter", __FUNCTION__);
 
-  ALOGE("phNxpEse_open Enter");
+  phNxpEse_secureTimerStop();
+
+  {
+    SyncEventGuard guard(gSpiOpenLock);
+    ALOGD_IF(ese_debug_enabled, "%s: CurrentState:%d", __FUNCTION__,
+             StateMachine::GetInstance().GetCurrentState());
+    if ((eStates_t)ST_SPI_CLOSED_RF_BUSY ==
+        (eStates_t)StateMachine::GetInstance().GetCurrentState()) {
+      ALOGD_IF(ese_debug_enabled, "%s: NFC in Use", __FUNCTION__);
+      return ESESTATUS_FAILED;
+    }
+  }
+  ALOGD("%s: Proceed with open...", __FUNCTION__);
   /*When spi channel is already opened return status as FAILED*/
   if (nxpese_ctxt.EseLibStatus != ESE_STATUS_CLOSE) {
     ALOGD_IF(ese_debug_enabled, "already opened\n");
@@ -181,10 +195,10 @@ ESESTATUS phNxpEse_open(phNxpEse_initParams initParams) {
   phNxpEse_memset(&nxpese_ctxt, 0x00, sizeof(nxpese_ctxt));
   phNxpEse_memset(&tPalConfig, 0x00, sizeof(tPalConfig));
 
-  ALOGE("MW SEAccessKit Version");
-  ALOGE("Android Version:0x%x", NXP_ANDROID_VER);
-  ALOGE("Major Version:0x%x", ESELIB_MW_VERSION_MAJ);
-  ALOGE("Minor Version:0x%x", ESELIB_MW_VERSION_MIN);
+  ALOGD("MW SEAccessKit Version");
+  ALOGD("Android Version:0x%x", NXP_ANDROID_VER);
+  ALOGD("Major Version:0x%x", ESELIB_MW_VERSION_MAJ);
+  ALOGD("Minor Version:0x%x", ESELIB_MW_VERSION_MIN);
 
   if (EseConfig::hasKey(NAME_NXP_TP_MEASUREMENT)) {
     tpm_enable = EseConfig::getUnsigned(NAME_NXP_TP_MEASUREMENT);
@@ -199,7 +213,7 @@ ESESTATUS phNxpEse_open(phNxpEse_initParams initParams) {
   if (EseConfig::hasKey(NAME_NXP_POWER_SCHEME)) {
     num = EseConfig::getUnsigned(NAME_NXP_POWER_SCHEME);
     nxpese_ctxt.pwr_scheme = num;
-    ALOGE("Power scheme read from config file - %lu", num);
+    ALOGD("Power scheme read from config file - %lu", num);
   } else {
     nxpese_ctxt.pwr_scheme = PN67T_POWER_SCHEME;
     ALOGE("Power scheme not defined in config file - %lu", num);
@@ -222,6 +236,9 @@ ESESTATUS phNxpEse_open(phNxpEse_initParams initParams) {
     ALOGE("phPalEse_Init Failed");
     goto clean_and_return;
   }
+
+  StateMachine::GetInstance().ProcessExtEvent(EVT_SPI_OPEN);
+
   /* Copying device handle to ESE Lib context*/
   nxpese_ctxt.pDevHandle = tPalConfig.pDevHandle;
 
@@ -254,8 +271,9 @@ ESESTATUS phNxpEse_open(phNxpEse_initParams initParams) {
     wConfigStatus = ESESTATUS_FAILED;
     goto clean_and_return_1;
   } else {
-    if ((current_spm_state & SPM_STATE_SPI) |
-        (current_spm_state & SPM_STATE_SPI_PRIO)) {
+    if (((current_spm_state & SPM_STATE_SPI) |
+        (current_spm_state & SPM_STATE_SPI_PRIO)) &&
+        !(current_spm_state & SPM_STATE_SPI_FAILED)) {
       ALOGE(" %s : SPI is already opened...second instance not allowed",
             __FUNCTION__);
       wConfigStatus = ESESTATUS_FAILED;
@@ -316,10 +334,21 @@ clean_and_return_2:
     phPalEse_close(nxpese_ctxt.pDevHandle);
     phNxpEse_memset(&nxpese_ctxt, 0x00, sizeof(nxpese_ctxt));
   }
+  StateMachine::GetInstance().ProcessExtEvent(EVT_SPI_CLOSE);
   nxpese_ctxt.EseLibStatus = ESE_STATUS_CLOSE;
   nxpese_ctxt.spm_power_state = false;
   return ESESTATUS_FAILED;
 }
+
+/******************************************************************************
+ * \ingroup spi_libese
+ *
+ * \brief  Check if libese has opened
+ *
+ * \retval return false if it is close, otherwise true.
+ *
+ ******************************************************************************/
+bool phNxpEse_isOpen() { return nxpese_ctxt.EseLibStatus != ESE_STATUS_CLOSE; }
 
 /******************************************************************************
  * Function         phNxpEse_openPrioSession
@@ -495,7 +524,7 @@ clean_and_return:
 #ifdef SPM_INTEGRATED
   wSpmStatus = phNxpEse_SPM_ConfigPwr(SPM_POWER_DISABLE);
   if (wSpmStatus != ESESTATUS_SUCCESS) {
-    ALOGE("phNxpEse_SPM_ConfigPwr: disabling power Failed");
+    ALOGE("phNxpEse_SPM_ConfigPwr : disabling power Failed");
   }
 clean_and_return_1:
   phNxpEse_SPM_DeInit();
@@ -800,26 +829,11 @@ ESESTATUS phNxpEse_chipReset(void) {
  ******************************************************************************/
 ESESTATUS phNxpEse_deInit(void) {
   ESESTATUS status = ESESTATUS_SUCCESS;
-  unsigned long maxTimer = 0;
+  ALOGD_IF(ese_debug_enabled, "%s Enter", __FUNCTION__);
   status = phNxpEseProto7816_Close(
       (phNxpEseProto7816SecureTimer_t*)&nxpese_ctxt.secureTimerParams);
   if (status == ESESTATUS_FAILED) {
     status = ESESTATUS_FAILED;
-  } else {
-    ALOGD_IF(ese_debug_enabled,
-             "%s secureTimer1 0x%x secureTimer2 0x%x secureTimer3 0x%x",
-             __FUNCTION__, nxpese_ctxt.secureTimerParams.secureTimer1,
-             nxpese_ctxt.secureTimerParams.secureTimer2,
-             nxpese_ctxt.secureTimerParams.secureTimer3);
-    phNxpEse_GetMaxTimer(&maxTimer);
-#ifdef SPM_INTEGRATED
-#ifdef NXP_SECURE_TIMER_SESSION
-    status = phNxpEse_SPM_DisablePwrControl(maxTimer);
-    if (status != ESESTATUS_SUCCESS) {
-      ALOGE("%s phNxpEseP61_DisablePwrCntrl: failed", __FUNCTION__);
-    }
-#endif
-#endif
   }
   return status;
 }
@@ -835,7 +849,7 @@ ESESTATUS phNxpEse_deInit(void) {
  ******************************************************************************/
 ESESTATUS phNxpEse_close(void) {
   ESESTATUS status = ESESTATUS_SUCCESS;
-
+  ALOGD_IF(ese_debug_enabled, "%s Enter", __FUNCTION__);
   if ((ESE_STATUS_CLOSE == nxpese_ctxt.EseLibStatus)) {
     ALOGE(" %s ESE Not Initialized \n", __FUNCTION__);
     return ESESTATUS_NOT_INITIALISED;
@@ -844,12 +858,12 @@ ESESTATUS phNxpEse_close(void) {
 #ifdef SPM_INTEGRATED
   ESESTATUS wSpmStatus = ESESTATUS_SUCCESS;
 #endif
-
+  phPalEse_spi_dwp_sync_close();
 #ifdef SPM_INTEGRATED
   /* Release the Access of  */
   wSpmStatus = phNxpEse_SPM_ConfigPwr(SPM_POWER_DISABLE);
   if (wSpmStatus != ESESTATUS_SUCCESS) {
-    ALOGE("phNxpEse_SPM_ConfigPwr: disabling power Failed");
+    ALOGE("phNxpEse_SPM_ConfigPwr : disabling power Failed");
   } else {
     nxpese_ctxt.spm_power_state = false;
   }
@@ -874,6 +888,7 @@ ESESTATUS phNxpEse_close(void) {
              "phNxpEse_close - ESE Context deinit completed");
   }
   /* Return success always */
+  StateMachine::GetInstance().ProcessExtEvent(EVT_SPI_CLOSE);
   return status;
 }
 
@@ -954,16 +969,9 @@ static int phNxpEse_readPacket(void* pDevHandle, uint8_t* pBuffer,
       headerIndex = 0;
       break;
     }
-    /*If it is Chained packet wait for 100 usec*/
-    if (poll_sof_chained_delay == 1) {
-      ALOGD_IF(ese_debug_enabled, "%s Chained Pkt, delay read %dus",
-               __FUNCTION__, WAKE_UP_DELAY * CHAINED_PKT_SCALER);
-      phPalEse_sleep(WAKE_UP_DELAY * CHAINED_PKT_SCALER);
-    } else {
-      ALOGD_IF(ese_debug_enabled, "%s Normal Pkt, delay read %dus",
-               __FUNCTION__, WAKE_UP_DELAY * NAD_POLLING_SCALER);
-      phPalEse_sleep(WAKE_UP_DELAY * NAD_POLLING_SCALER);
-    }
+    ALOGD_IF(ese_debug_enabled, "%s Normal Pkt, delay read %dus", __FUNCTION__,
+             READ_WAKE_UP_DELAY * NAD_POLLING_SCALER);
+    phPalEse_sleep(READ_WAKE_UP_DELAY * NAD_POLLING_SCALER);
   } while (sof_counter < ESE_NAD_POLLING_MAX);
   if (pBuffer[0] == RECIEVE_PACKET_SOF) {
     ALOGD_IF(ese_debug_enabled, "%s SOF FOUND", __FUNCTION__);
@@ -972,16 +980,6 @@ static int phNxpEse_readPacket(void* pDevHandle, uint8_t* pBuffer,
     ret = phPalEse_read(pDevHandle, &pBuffer[1 + headerIndex], numBytesToRead);
     if (ret < 0) {
       ALOGE("_spi_read() [HDR]errno : %x ret : %X", errno, ret);
-    }
-    if ((pBuffer[1] == CHAINED_PACKET_WITHOUTSEQN) ||
-        (pBuffer[1] == CHAINED_PACKET_WITHSEQN)) {
-      poll_sof_chained_delay = 1;
-      ALOGD_IF(ese_debug_enabled, "poll_sof_chained_delay value is %d ",
-               poll_sof_chained_delay);
-    } else {
-      poll_sof_chained_delay = 0;
-      ALOGD_IF(ese_debug_enabled, "poll_sof_chained_delay value is %d ",
-               poll_sof_chained_delay);
     }
     total_count = 3;
     nNbBytesToRead = pBuffer[2];
@@ -1144,7 +1142,8 @@ void phNxpEse_free(void* ptr) {
  * Returns          void.
  *
  ******************************************************************************/
-static void phNxpEse_GetMaxTimer(unsigned long* pMaxTimer) {
+void phNxpEse_GetMaxTimer(unsigned long *pMaxTimer) {
+  ALOGD_IF(ese_debug_enabled, "%s Enter", __FUNCTION__);
   /* Finding the max. of the timer value */
   *pMaxTimer = nxpese_ctxt.secureTimerParams.secureTimer1;
   if (*pMaxTimer < nxpese_ctxt.secureTimerParams.secureTimer2)
@@ -1158,7 +1157,7 @@ static void phNxpEse_GetMaxTimer(unsigned long* pMaxTimer) {
   /* Add extra 5% to the timer */
   *pMaxTimer +=
       CONVERT_TO_PERCENTAGE(*pMaxTimer, ADDITIONAL_SECURE_TIME_PERCENTAGE);
-  ALOGE("%s Max timer value = %lu", __FUNCTION__, *pMaxTimer);
+  ALOGD("%s Exit Max timer value = %lu", __FUNCTION__, *pMaxTimer);
   return;
 }
 
@@ -1174,7 +1173,7 @@ static void phNxpEse_GetMaxTimer(unsigned long* pMaxTimer) {
 ESESTATUS phNxpEse_DisablePwrCntrl(void) {
   ESESTATUS status = ESESTATUS_SUCCESS;
   unsigned long maxTimer = 0;
-  ALOGE("%s Enter", __FUNCTION__);
+  ALOGD("%s Enter", __FUNCTION__);
   phNxpEse_GetMaxTimer(&maxTimer);
 #ifdef NXP_SECURE_TIMER_SESSION
   status = phNxpEse_SPM_DisablePwrControl(maxTimer);

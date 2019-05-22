@@ -1,7 +1,7 @@
 /******************************************************************************
  *
  *
- *  Copyright (C) 2015 NXP Semiconductors
+ *  Copyright (C) 2018 NXP Semiconductors
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -73,6 +73,7 @@ class EseAdaptation {
   virtual ~EseAdaptation();
   static EseAdaptation& GetInstance();
   static int HalIoctl(long arg, void* p_data);
+  static void HalNfccNtf(long arg, void *p_data);
   tHAL_ESE_ENTRY* GetHalEntryFuncs();
   ese_nxp_IoctlInOutData_t* mCurrentIoctlData;
   tHAL_ESE_ENTRY mSpiHalEntryFuncs;  // function pointers for HAL entry points

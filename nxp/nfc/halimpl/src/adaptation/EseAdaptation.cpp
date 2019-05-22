@@ -1,7 +1,7 @@
 /******************************************************************************
  *
  *
- *  Copyright (C) 2015 NXP Semiconductors
+ *  Copyright (C) 2018 NXP Semiconductors
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
  *  limitations under the License.
  *
  ******************************************************************************/
-#define LOG_TAG "EseAdaptation"
+#define LOG_TAG "EseHalClient"
 #include <android/hardware/secure_element/1.0/ISecureElement.h>
 #include <android/hardware/secure_element/1.0/ISecureElementHalCallback.h>
 #include <android/hardware/secure_element/1.0/types.h>
@@ -57,8 +57,8 @@ ThreadCondVar EseAdaptation::mHalCoreInitCompletedEvent;
 ThreadCondVar EseAdaptation::mHalInitCompletedEvent;
 #define SIGNAL_NONE 0
 #define SIGNAL_SIGNALED 1
-static uint8_t isSignaled = SIGNAL_NONE;
-static uint8_t evt_status;
+//static uint8_t isSignaled = SIGNAL_NONE;
+//static uint8_t evt_status;
 #endif
 
 /*******************************************************************************
@@ -188,7 +188,7 @@ void EseAdaptation::InitializeHalDeviceContext() {
   ALOGD_IF(nfc_debug_enabled, "%s: enter", func);
   ALOGD_IF(nfc_debug_enabled, "%s: INxpEse::tryGetService()", func);
   mHalNxpEse = INxpEse::tryGetService();
-  LOG_FATAL_IF(mHalNxpEse == nullptr, "Failed to retrieve the NXP ESE HAL!");
+  ALOGD_IF(mHalNxpEse == nullptr, "%s: Failed to retrieve the NXP ESE HAL!", func);
   if(mHalNxpEse != nullptr) {
     ALOGD_IF(nfc_debug_enabled, "%s: INxpEse::getService() returned %p (%s)",
              func, mHalNxpEse.get(),
@@ -246,8 +246,7 @@ void IoctlCallback(hidl_vec<uint8_t> outputData) {
 **              If called with a arg value of 0x00 than wired access will be
 **              released, status of the requst would be updated to p_data.
 **              If called with a arg value of 0x02 than current p61 state would
-*be
-**              updated to p_data.
+**              be updated to p_data.
 **
 ** Returns:     -1 or 0.
 **
@@ -265,6 +264,32 @@ int EseAdaptation::HalIoctl(long arg, void* p_data) {
   ALOGD_IF(nfc_debug_enabled, "%s Ioctl Completed for Type=%lu", func,
            (unsigned long)pInpOutData->out.ioctlType);
   return (pInpOutData->out.result);
+}
+
+/*******************************************************************************
+**
+** Function:    EseAdaptation::HalNfccNtf
+**
+** Description: Used to send NFCC notifications to ESE HAL. Its not a blocking
+**              API.
+**
+** Returns:     none
+**
+*******************************************************************************/
+void EseAdaptation::HalNfccNtf(long arg, void *p_data) {
+  const char *func = "EseAdaptation::HalNfccNtf";
+  hidl_vec<uint8_t> data;
+  AutoThreadMutex a(sIoctlLock);
+  ese_nxp_IoctlInOutData_t *pInpOutData = (ese_nxp_IoctlInOutData_t *)p_data;
+  ALOGD_IF(nfc_debug_enabled, "%s arg=%ld", func, arg);
+  pInpOutData->inp.context = &EseAdaptation::GetInstance();
+  EseAdaptation::GetInstance().mCurrentIoctlData = pInpOutData;
+  data.setToExternal((uint8_t *)pInpOutData, sizeof(ese_nxp_IoctlInOutData_t));
+  if (mHalNxpEse != nullptr)
+    mHalNxpEse->nfccNtf(arg, data);
+  ALOGD_IF(nfc_debug_enabled, "%s Ioctl Completed for Type=%lu", func,
+           (unsigned long)pInpOutData->out.ioctlType);
+  return;
 }
 
 /*******************************************************************************

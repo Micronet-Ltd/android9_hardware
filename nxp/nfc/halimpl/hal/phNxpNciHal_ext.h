@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@
 #define _PHNXPNCIHAL_EXT_H_
 
 #include <phNxpNciHal.h>
-#include <phNxpNciHal_dta.h>
 #include <string.h>
+#include <phNxpNciHal_dta.h>
 
 void phNxpNciHal_ext_init(void);
 NFCSTATUS phNxpNciHal_process_ext_rsp(uint8_t* p_ntf, uint16_t* p_len);
 NFCSTATUS phNxpNciHal_send_ext_cmd(uint16_t cmd_len, uint8_t* p_cmd);
+NFCSTATUS phNxpNciHal_send_ext_cmd_ntf(uint16_t cmd_len, uint8_t* p_cmd);
+bool_t phNxpNciHal_check_wait_for_ntf(void);
 NFCSTATUS phNxpNciHal_send_ese_hal_cmd(uint16_t cmd_len, uint8_t* p_cmd);
 NFCSTATUS phNxpNciHal_write_ext(uint16_t* cmd_len, uint8_t* p_cmd_data,
                                 uint16_t* rsp_len, uint8_t* p_rsp_data);

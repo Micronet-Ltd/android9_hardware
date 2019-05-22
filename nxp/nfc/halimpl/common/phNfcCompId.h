@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
  *  Component IDs
  *
  *  IDs for all NFC components. Combined with the Status Code they build the
- * value (status)
+ *value (status)
  *  returned by each function.
  *
  *  ID Number Spaces:
@@ -35,7 +35,7 @@
  *  .
  *
  *         The value CID_NFC_NONE does not exist for Component IDs. Do not use
- * this value except
+ *this value except
  *         for NFCSTATUS_SUCCESS. The enumeration function uses CID_NFC_NONE
  *         to mark unassigned "References".
  */

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,38 +18,53 @@
 
 #include <hardware/nfc.h>
 #include <phNxpNciHal_utils.h>
+#include "NxpNfcCapability.h"
+#include "hal_nxpnfc.h"
 
 /********************* Definitions and structures *****************************/
 #define MAX_RETRY_COUNT 5
 #define NCI_MAX_DATA_LEN 300
 #define NCI_POLL_DURATION 500
 #define HAL_NFC_ENABLE_I2C_FRAGMENTATION_EVT 0x07
+#define NXP_STAG_TIMEOUT_BUF_LEN 0x04 /*FIXME:TODO:remove*/
+#define NXP_WIREDMODE_RESUME_TIMEOUT_LEN 0x04
+#define NFCC_DECIDES 00
+#define POWER_ALWAYS_ON 01
+#define LINK_ALWAYS_ON 02
 #undef P2P_PRIO_LOGIC_HAL_IMP
+
 #define NCI_VERSION_2_0 0x20
 #define NCI_VERSION_1_1 0x11
 #define NCI_VERSION_1_0 0x10
 #define NCI_VERSION_UNKNOWN 0x00
+
+/*Mem alloc with 8 byte alignment*/
+#define size_align(sz) ((((sz)-1) | 7) + 1)
+#define nxp_malloc(size) malloc(size_align((size)))
+
 typedef void(phNxpNciHal_control_granted_callback_t)();
 
 /*ROM CODE VERSION FW*/
 #define FW_MOBILE_ROM_VERSION_PN551 0x10
 #define FW_MOBILE_ROM_VERSION_PN553 0x11
-#define FW_MOBILE_ROM_VERSION_PN557 0x12
 #define FW_MOBILE_ROM_VERSION_PN548AD 0x10
 #define FW_MOBILE_ROM_VERSION_PN547C2 0x08
-/* NCI Data */
+#define FW_MOBILE_ROM_VERSION_PN557 0x12
 
-#define NCI_MT_CMD 0x20
-#define NCI_MT_RSP 0x40
-#define NCI_MT_NTF 0x60
+#define FW_DBG_REASON_AVAILABLE     (0xA3)
+
+
+/* NCI Data */
+#define NCI_MT_CMD  0x20
+#define NCI_MT_RSP  0x40
+#define NCI_MT_NTF  0x60
 
 #define CORE_RESET_TRIGGER_TYPE_CORE_RESET_CMD_RECEIVED 0x02
-#define CORE_RESET_TRIGGER_TYPE_POWERED_ON 0x01
-#define NCI_MSG_CORE_RESET 0x00
-#define NCI_MSG_CORE_INIT 0x01
-#define NCI_MT_MASK 0xE0
-#define NCI_OID_MASK 0x3F
-#define NXP_NFC_CHIP_PN81T
+#define CORE_RESET_TRIGGER_TYPE_POWERED_ON              0x01
+#define NCI_MSG_CORE_RESET           0x00
+#define NCI_MSG_CORE_INIT            0x01
+#define NCI_MT_MASK                  0xE0
+#define NCI_OID_MASK                 0x3F
 
 #define NXP_MAX_CONFIG_STRING_LEN 260
 
@@ -63,7 +78,6 @@ typedef enum {
   HAL_STATUS_OPEN,
   HAL_STATUS_MIN_OPEN
 } phNxpNci_HalStatus;
-
 typedef enum {
   GPIO_UNKNOWN = 0x00,
   GPIO_STORE = 0x01,
@@ -81,10 +95,12 @@ typedef struct phNxpNciGpioInfo {
 /* Macros to enable and disable extensions */
 #define HAL_ENABLE_EXT() (nxpncihal_ctrl.hal_ext_enabled = 1)
 #define HAL_DISABLE_EXT() (nxpncihal_ctrl.hal_ext_enabled = 0)
+
 typedef struct phNxpNciInfo {
-  uint8_t nci_version;
-  bool_t wait_for_ntf;
-} phNxpNciInfo_t;
+  uint8_t   nci_version;
+  bool_t    wait_for_ntf;
+  uint8_t   lastResetNtfReason;
+}phNxpNciInfo_t;
 /* NCI Control structure */
 typedef struct phNxpNciHal_Control {
   phNxpNci_HalStatus halStatus; /* Indicate if hal is open or closed */
@@ -99,7 +115,6 @@ typedef struct phNxpNciHal_Control {
   /* Rx data */
   uint8_t* p_rx_ese_data;
   uint16_t rx_ese_data_len;
-
   /* libnfc-nci callbacks */
   nfc_stack_callback_t* p_nfc_stack_cback;
   nfc_stack_data_callback_t* p_nfc_stack_data_cback;
@@ -109,6 +124,8 @@ typedef struct phNxpNciHal_Control {
 
   /* HAL open status */
   bool_t hal_open_status;
+
+  bool_t is_wait_for_ce_ntf;
 
   /* HAL extensions */
   uint8_t hal_ext_enabled;
@@ -126,15 +143,21 @@ typedef struct phNxpNciHal_Control {
   uint16_t retry_cnt;
   uint8_t read_retry_cnt;
   phNxpNciInfo_t nci_info;
-
+  uint8_t hal_boot_mode;
+  tNFC_chipType chipType;
   /* to store and restore gpio values */
   phNxpNciGpioInfo_t phNxpNciGpioInfo;
+  bool bIsForceFwDwnld;
 } phNxpNciHal_Control_t;
+
+typedef struct {
+  uint8_t fw_update_reqd;
+  uint8_t rf_update_reqd;
+} phNxpNciHal_FwRfupdateInfo_t;
 
 typedef struct phNxpNciClock {
   bool_t isClockSet;
   uint8_t p_rx_data[20];
-  bool_t issetConfig;
 } phNxpNciClock_t;
 
 typedef struct phNxpNciRfSetting {
@@ -142,16 +165,62 @@ typedef struct phNxpNciRfSetting {
   uint8_t p_rx_data[20];
 } phNxpNciRfSetting_t;
 
-typedef struct phNxpNciMwEepromArea {
-  bool_t isGetEepromArea;
-  uint8_t p_rx_data[32];
-} phNxpNciMwEepromArea_t;
+/*set config management*/
+
+#define TOTAL_DURATION 0x00
+#define ATR_REQ_GEN_BYTES_POLL 0x29
+#define ATR_REQ_GEN_BYTES_LIS 0x61
+#define LEN_WT 0x60
+
+/*Whenever a new get cfg need to be sent,
+ * array must be updated with defined config type*/
+static const uint8_t get_cfg_arr[] = {TOTAL_DURATION, ATR_REQ_GEN_BYTES_POLL,
+                                      ATR_REQ_GEN_BYTES_LIS, LEN_WT};
+
+typedef enum {
+  EEPROM_RF_CFG,
+  EEPROM_FW_DWNLD,
+  EEPROM_WIREDMODE_RESUME_TIMEOUT,
+  EEPROM_ESE_SVDD_POWER,
+  EEPROM_ESE_POWER_EXT_PMU,
+  EEPROM_PROP_ROUTING,
+  EEPROM_ESE_SESSION_ID,
+  EEPROM_SWP1_INTF,
+  EEPROM_SWP1A_INTF,
+  EEPROM_SWP2_INTF
+} phNxpNci_EEPROM_request_type_t;
+
+typedef struct phNxpNci_EEPROM_info {
+  uint8_t request_mode;
+  phNxpNci_EEPROM_request_type_t request_type;
+  uint8_t update_mode;
+  uint8_t* buffer;
+  uint8_t bufflen;
+} phNxpNci_EEPROM_info_t;
+
+typedef struct phNxpNci_getCfg_info {
+  bool_t isGetcfg;
+  uint8_t total_duration[4];
+  uint8_t total_duration_len;
+  uint8_t atr_req_gen_bytes[48];
+  uint8_t atr_req_gen_bytes_len;
+  uint8_t atr_res_gen_bytes[48];
+  uint8_t atr_res_gen_bytes_len;
+  uint8_t pmid_wt[3];
+  uint8_t pmid_wt_len;
+} phNxpNci_getCfg_info_t;
 
 typedef enum {
   NFC_FORUM_PROFILE,
   EMV_CO_PROFILE,
   INVALID_PROFILe
 } phNxpNciProfile_t;
+
+typedef enum {
+  NFC_NORMAL_BOOT_MODE,
+  NFC_FAST_BOOT_MODE,
+  NFC_OSU_BOOT_MODE
+} phNxpNciBootMode;
 /* NXP Poll Profile control structure */
 typedef struct phNxpNciProfile_Control {
   phNxpNciProfile_t profile_type;
@@ -167,18 +236,69 @@ typedef struct phNxpNciProfile_Control {
 #define NCI_HAL_POST_INIT_CPLT_MSG 0x413
 #define NCI_HAL_PRE_DISCOVER_CPLT_MSG 0x414
 #define NCI_HAL_ERROR_MSG 0x415
+#define NCI_HAL_HCI_NETWORK_RESET_MSG 0x416
 #define NCI_HAL_RX_MSG 0xF01
-
+#define NCI_HAL_POST_MIN_INIT_CPLT_MSG 0xF02
 #define NCIHAL_CMD_CODE_LEN_BYTE_OFFSET (2U)
 #define NCIHAL_CMD_CODE_BYTE_LEN (3U)
 
 /******************** NCI HAL exposed functions *******************************/
+
 int phNxpNciHal_check_ncicmd_write_window(uint16_t cmd_len, uint8_t* p_cmd);
 void phNxpNciHal_request_control(void);
 void phNxpNciHal_release_control(void);
+NFCSTATUS phNxpNciHal_send_get_cfgs();
 int phNxpNciHal_write_unlocked(uint16_t data_len, const uint8_t* p_data);
-#if (NFC_NXP_CHIP_TYPE == PN548C2)
-NFCSTATUS phNxpNciHal_core_reset_recovery();
-void phNxpNciHal_discovery_cmd_ext(uint8_t* p_cmd_data, uint16_t cmd_len);
-#endif
+static __attribute__((unused)) int phNxpNciHal_fw_mw_ver_check();
+NFCSTATUS request_EEPROM(phNxpNci_EEPROM_info_t* mEEPROM_info);
+NFCSTATUS phNxpNciHal_send_nfcee_pwr_cntl_cmd(uint8_t type);
+
+/*******************************************************************************
+**
+** Function         phNxpNciHal_configFeatureList
+**
+** Description      Configures the featureList based on chip type
+**                  HW Version information number will provide chipType.
+**                  HW Version can be obtained from CORE_INIT_RESPONSE(NCI 1.0)
+**                  or CORE_RST_NTF(NCI 2.0)
+**
+** Parameters       CORE_INIT_RESPONSE/CORE_RST_NTF, len
+**
+** Returns          none
+*******************************************************************************/
+void phNxpNciHal_configFeatureList(uint8_t* init_rsp, uint16_t rsp_len);
+
+/*******************************************************************************
+**
+** Function         phNxpNciHal_getChipType
+**
+** Description      Gets the chipType which is configured during bootup
+**
+** Parameters       none
+**
+** Returns          chipType
+*******************************************************************************/
+tNFC_chipType phNxpNciHal_getChipType();
+
+/*******************************************************************************
+**
+** Function         phNxpNciHal_getNxpConfig
+**
+** Description      Read vendor configuration macro values
+**
+** Parameters       ioctl input/output struct.
+**
+** Returns          none
+*******************************************************************************/
+void phNxpNciHal_getNxpConfig(nfc_nci_IoctlInOutData_t *pInpOutData);
+/******************************************************************************
+ * Function         phNxpNciHal_getNxpTransitConfig
+ *
+ * Description      This function overwrite libnfc-nxpTransit.conf file
+ *                  with transitConfValue.
+ *
+ * Returns          void.
+ *
+ ******************************************************************************/
+void phNxpNciHal_setNxpTransitConfig(char *transitConfValue);
 #endif /* _PHNXPNCIHAL_H_ */
