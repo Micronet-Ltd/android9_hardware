@@ -1,6 +1,24 @@
 /*
+ * Copyright (C) 2010 The Android Open Source Project
  *
- *  Copyright (C) 2013-2014 NXP Semiconductors
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2015 NXP Semiconductors
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,19 +33,10 @@
  *  limitations under the License.
  *
  ******************************************************************************/
-#include <errno.h>
-#include <pthread.h>
-#include <log/log.h>
 
-#include <phNxpLog.h>
-#include <phNxpNciHal.h>
 #include <phNxpNciHal_utils.h>
-
-#if (NFC_NXP_CHIP_TYPE == PN548C2)
-extern uint8_t discovery_cmd[50];
-extern uint8_t discovery_cmd_len;
-extern uint8_t nfcdep_detected;
-#endif
+#include <errno.h>
+#include <phNxpLog.h>
 
 /*********************** Link list functions **********************************/
 
@@ -96,6 +105,7 @@ int listAdd(struct listHead* pList, void* pData) {
   }
   pNode->pData = pData;
   pNode->pNext = NULL;
+
   pthread_mutex_lock(&pList->mutex);
 
   /* Add the node to the list */
@@ -343,10 +353,6 @@ void phNxpNciHal_cleanup_monitor(void) {
 **
 *******************************************************************************/
 phNxpNciHal_Monitor_t* phNxpNciHal_get_monitor(void) {
- if(nxpncihal_monitor == NULL)
- {
-    NXPLOG_NCIHAL_E("nxpncihal_monitor is null");
- }
   return nxpncihal_monitor;
 }
 
@@ -445,9 +451,9 @@ void phNxpNciHal_print_packet(const char* pString, const uint8_t* p_data,
     snprintf(&print_buffer[i * 2], 3, "%02X", p_data[i]);
   }
   if (0 == memcmp(pString, "SEND", 0x04)) {
-    NXPLOG_NCIX_D("len = %3d > %s", len, print_buffer);
+    NXPLOG_NCIX_D("len = %3d => %s", len, print_buffer);
   } else if (0 == memcmp(pString, "RECV", 0x04)) {
-    NXPLOG_NCIR_D("len = %3d > %s", len, print_buffer);
+    NXPLOG_NCIR_D("len = %3d <= %s", len, print_buffer);
   }
 
   return;
@@ -464,18 +470,6 @@ void phNxpNciHal_print_packet(const char* pString, const uint8_t* p_data,
 *******************************************************************************/
 
 void phNxpNciHal_emergency_recovery(void) {
-#if (NFC_NXP_CHIP_TYPE == PN548C2)
-  if (nfcdep_detected && discovery_cmd_len != 0) {
-    pthread_t pthread;
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    if (pthread_create(&pthread, &attr, (void*)phNxpNciHal_core_reset_recovery,
-                       NULL) == 0) {
-      return;
-    }
-  }
-#endif
   NXPLOG_NCIHAL_E("%s: abort()", __func__);
-  abort();
+  //    abort();
 }

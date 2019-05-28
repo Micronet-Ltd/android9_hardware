@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
+#include <phNxpNciHal_NfcDepSWPrio.h>
 #include <phNxpLog.h>
 #include <phNxpNciHal.h>
-#include <phNxpNciHal_NfcDepSWPrio.h>
 
 /* Timeout value to wait for NFC-DEP detection.*/
 #define CUSTOM_POLL_TIMEOUT 160
@@ -131,7 +131,7 @@ static NFCSTATUS phNxpNciHal_stop_polling_loop() {
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
   if (pthread_create(&pthread, &attr, tmp_thread, (void*)&discover_type) != 0) {
-    NXPLOG_NCIHAL_E("fail to create pthread");
+    NXPLOG_NCIHAL_E("phNxpNciHal_resume_polling_loop");
   }
   pthread_attr_destroy(&attr);
   return status;
@@ -156,7 +156,7 @@ static NFCSTATUS phNxpNciHal_resume_polling_loop() {
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
   if (pthread_create(&pthread, &attr, tmp_thread, (void*)&discover_type) != 0) {
-    NXPLOG_NCIHAL_E("fail to create pthread");
+    NXPLOG_NCIHAL_E("phNxpNciHal_resume_polling_loop");
   }
   pthread_attr_destroy(&attr);
   return status;
@@ -181,7 +181,7 @@ NFCSTATUS phNxpNciHal_start_polling_loop() {
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
   if (pthread_create(&pthread, &attr, tmp_thread, (void*)&discover_type) != 0) {
-    NXPLOG_NCIHAL_E("fail to create pthread");
+    NXPLOG_NCIHAL_E("phNxpNciHal_resume_polling_loop");
   }
   pthread_attr_destroy(&attr);
   return status;
@@ -471,6 +471,7 @@ void* tmp_thread(void* tmp) {
   }
 
   NXPLOG_NCIHAL_E("tmp_thread: exit");
+  pthread_exit(NULL);
   return NULL;
 }
 /*******************************************************************************
@@ -494,7 +495,7 @@ NFCSTATUS phNxpNciHal_select_RF_Discovery(unsigned int RfID,
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
   if (pthread_create(&pthread, &attr, tmp_thread, (void*)&discover_type) != 0) {
-    NXPLOG_NCIHAL_E("fail to create pthread");
+    NXPLOG_NCIHAL_E("phNxpNciHal_resume_polling_loop");
   }
   pthread_attr_destroy(&attr);
   return status;

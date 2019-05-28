@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,10 +20,6 @@
 
 #ifndef PHOSALNFC_TIMER_H
 #define PHOSALNFC_TIMER_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /*
 ************************* Include Files ****************************************
@@ -80,7 +76,4 @@ void phOsalNfc_Timer_Cleanup(void);
 uint32_t phUtilNfc_CheckForAvailableTimer(void);
 NFCSTATUS phOsalNfc_CheckTimerPresence(void* pObjectHandle);
 
-#ifdef __cplusplus
-}
-#endif /*  C++ Compilation guard */
 #endif /* PHOSALNFC_TIMER_H */

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,13 +21,12 @@
 
 #include <phDnldNfc_Internal.h>
 #include <phDnldNfc_Utils.h>
+#include <phTmlNfc.h>
 #include <phNxpLog.h>
 #include <phNxpNciHal_utils.h>
-#include <phTmlNfc.h>
 
 /* Minimum length of payload including 1 byte CmdId */
 #define PHDNLDNFC_MIN_PLD_LEN (0x04U)
-
 /* Offset of Length byte within the frame */
 #define PHDNLDNFC_FRAME_HDR_OFFSET (0x00)
 /* Offset of FrameId within the frame */
@@ -40,7 +39,6 @@
 #define PHDNLDNFC_FRAME_RDDATA_OFFSET \
   ((PHDNLDNFC_FRAME_HDR_LEN) +        \
    (PHDNLDNFC_MIN_PLD_LEN)) /* recvd frame offset where data starts */
-
 /* Size of first secure write frame Signature */
 #define PHDNLDNFC_FRAME_SIGNATURE_SIZE (0xC0U)
 /* Size of first secure write frame payload */
@@ -74,33 +72,6 @@
 #define PHDNLDNFC_USERDATA_EEPROM_OFFSET (0x003CU)
 /* 16 bits length of user data area */
 #define PHDNLDNFC_USERDATA_EEPROM_LEN (0x0DC0U)
-#else
-
-#if (NFC_NXP_CHIP_TYPE == PN548C2)
-/* EEPROM offset and length value for PN548AD */
-/* 16 bits offset indicating user data area start location */
-#define PHDNLDNFC_USERDATA_EEPROM_OFFSET (0x02BCU)
-/* 16 bits length of user data area */
-#define PHDNLDNFC_USERDATA_EEPROM_LEN (0x0C00U)
-#elif (NFC_NXP_CHIP_TYPE == PN551)
-/* EEPROM offset and length value for PN551 */
-/* 16 bits offset indicating user data area start location */
-#define PHDNLDNFC_USERDATA_EEPROM_OFFSET (0x02BCU)
-/* 16 bits length of user data area */
-#define PHDNLDNFC_USERDATA_EEPROM_LEN (0x0C00U)
-#elif(NFC_NXP_CHIP_TYPE == PN553 || NFC_NXP_CHIP_TYPE == PN557)
-/* EEPROM offset and length value for PN553/PN557 */
-/* 16 bits offset indicating user data area start location */
-#define PHDNLDNFC_USERDATA_EEPROM_OFFSET (0x02BCU)
-/* 16 bits length of user data area */
-#define PHDNLDNFC_USERDATA_EEPROM_LEN (0x0BC0U)
-#else
-/* EEPROM offset and length value for PN547C2 */
-/* 16 bits offset indicating user data area start location */
-#define PHDNLDNFC_USERDATA_EEPROM_OFFSET (0x023CU)
-/* 16 bits length of user data area */
-#define PHDNLDNFC_USERDATA_EEPROM_LEN (0x0C80U)
-#endif
 
 #endif
 #define PH_LIBNFC_VEN_RESET_ON_DOWNLOAD_TIMEOUT (1)
@@ -236,6 +207,13 @@ static void phDnldNfc_ProcessSeqState(void* pContext,
     switch (pDlCtxt->tCurrState) {
       case phDnldNfc_StateInit: {
         NXPLOG_FWDNLD_D("Initializing Sequence..");
+        wStatus = phTmlNfc_UpdateReadCompleteCallback (
+            (pphTmlNfc_TransactCompletionCb_t)&phDnldNfc_ProcessSeqState);
+        if (NFCSTATUS_SUCCESS != wStatus) {
+          NXPLOG_FWDNLD_D(
+              "Registering phDnldNfc_ProcessSeqState for readComplete "
+              "Failed!!");
+        }
 
         if (0 == (pDlCtxt->TimerInfo.dwRspTimerId)) {
           TimerId = phOsalNfc_Timer_Create();
@@ -401,7 +379,7 @@ static void phDnldNfc_ProcessRWSeqState(void* pContext,
         pDlCtxt->tCurrState = phDnldNfc_StateSend;
       }
       case phDnldNfc_StateSend: {
-        if (pDlCtxt->bResendLastFrame == false) {
+        if (false == pDlCtxt->bResendLastFrame) {
           wStatus = phDnldNfc_BuildFramePkt(pDlCtxt);
         } else {
           pDlCtxt->bResendLastFrame = false;
@@ -577,7 +555,7 @@ static NFCSTATUS phDnldNfc_BuildFramePkt(pphDnldNfc_DlContext_t pDlContext) {
         NXPLOG_FWDNLD_E("Invalid Input Parameter(s) for Write!!");
         wStatus = PHNFCSTVAL(CID_NFC_DNLD, NFCSTATUS_INVALID_PARAMETER);
       } else {
-        if ((pDlContext->tRWInfo.bFirstWrReq) == true) {
+        if (true == (pDlContext->tRWInfo.bFirstWrReq)) {
           (pDlContext->tRWInfo.wRemBytes) = (pDlContext->tUserData.wLen);
           (pDlContext->tRWInfo.wOffset) = 0;
         }
@@ -588,7 +566,7 @@ static NFCSTATUS phDnldNfc_BuildFramePkt(pphDnldNfc_DlContext_t pDlContext) {
         NXPLOG_FWDNLD_E("Invalid Input Parameter(s) for Read!!");
         wStatus = PHNFCSTVAL(CID_NFC_DNLD, NFCSTATUS_INVALID_PARAMETER);
       } else {
-        if ((pDlContext->tRWInfo.bFramesSegmented) == false) {
+        if (false == (pDlContext->tRWInfo.bFramesSegmented)) {
           NXPLOG_FWDNLD_D("Verifying RspBuffInfo for Read Request..");
           wFrameLen = (pDlContext->tRspBuffInfo.wLen) + PHDNLDNFC_MIN_PLD_LEN;
 
@@ -641,7 +619,7 @@ static NFCSTATUS phDnldNfc_BuildFramePkt(pphDnldNfc_DlContext_t pDlContext) {
           wFrameLen += PHDNLDNFC_FRAME_HDR_LEN;
         } else {
           if (0 != (pDlContext->tRWInfo.wRWPldSize)) {
-            if ((pDlContext->tRWInfo.bFramesSegmented) == true) {
+            if (true == (pDlContext->tRWInfo.bFramesSegmented)) {
               /* Turning ON the Fragmentation bit in FrameLen */
               wFrameLen = PHDNLDNFC_SET_HDR_FRAGBIT(wFrameLen);
             }
@@ -717,13 +695,21 @@ static NFCSTATUS phDnldNfc_CreateFramePld(pphDnldNfc_DlContext_t pDlContext) {
       (pDlContext->tCmdRspFrameInfo.dwSendlength) += PHDNLDNFC_MIN_PLD_LEN;
     } else if (phDnldNfc_ChkIntg == (pDlContext->FrameInp.Type)) {
       (pDlContext->tCmdRspFrameInfo.dwSendlength) += PHDNLDNFC_MIN_PLD_LEN;
-
+#ifdef NXP_PN547C1_DOWNLOAD
       wChkIntgVal = PHDNLDNFC_USERDATA_EEPROM_OFFSET;
+#else
+      wChkIntgVal = nfcFL.nfcMwFL._PHDNLDNFC_USERDATA_EEPROM_OFFSET;
+#endif
+
       memcpy(&(pDlContext->tCmdRspFrameInfo
                    .aFrameBuff[PHDNLDNFC_FRAME_RDDATA_OFFSET]),
              &wChkIntgVal, sizeof(wChkIntgVal));
 
+#ifdef NXP_PN547C1_DOWNLOAD
       wChkIntgVal = PHDNLDNFC_USERDATA_EEPROM_LEN;
+#else
+      wChkIntgVal = nfcFL.nfcMwFL._PHDNLDNFC_USERDATA_EEPROM_LEN;
+#endif
       memcpy(&(pDlContext->tCmdRspFrameInfo
                    .aFrameBuff[PHDNLDNFC_FRAME_RDDATA_OFFSET +
                                PHDNLDNFC_USERDATA_EEPROM_OFFSIZE]),
@@ -736,7 +722,7 @@ static NFCSTATUS phDnldNfc_CreateFramePld(pphDnldNfc_DlContext_t pDlContext) {
     } else if (phDnldNfc_FTWrite == (pDlContext->FrameInp.Type)) {
       wBuffIdx = (pDlContext->tRWInfo.wOffset);
 
-      if ((pDlContext->tRWInfo.bFramesSegmented) == false) {
+      if (false == (pDlContext->tRWInfo.bFramesSegmented)) {
         wFrameLen = (pDlContext->tUserData.pBuff[wBuffIdx]);
         wFrameLen <<= 8;
         wFrameLen |= (pDlContext->tUserData.pBuff[wBuffIdx + 1]);
@@ -745,7 +731,7 @@ static NFCSTATUS phDnldNfc_CreateFramePld(pphDnldNfc_DlContext_t pDlContext) {
       }
 
       if ((pDlContext->tRWInfo.wRWPldSize) > PHDNLDNFC_CMDRESP_MAX_PLD_SIZE) {
-        if ((pDlContext->tRWInfo.bFirstChunkResp) == false) {
+        if (false == (pDlContext->tRWInfo.bFirstChunkResp)) {
           (pDlContext->tRWInfo.wRemChunkBytes) = wFrameLen;
           (pDlContext->tRWInfo.wOffset) += PHDNLDNFC_FRAME_HDR_LEN;
           wBuffIdx = (pDlContext->tRWInfo.wOffset);
@@ -1008,7 +994,7 @@ static void phDnldNfc_RspTimeOutCb(uint32_t TimerId, void* pContext) {
 
       NXPLOG_FWDNLD_D("%x", pDlCtxt->tLastStatus);
 
-#if (PH_LIBNFC_VEN_RESET_ON_DOWNLOAD_TIMEOUT == TRUE)
+#if (PH_LIBNFC_VEN_RESET_ON_DOWNLOAD_TIMEOUT == true)
       if (PH_DL_STATUS_SIGNATURE_ERROR == pDlCtxt->tLastStatus) {
         /* Do a VEN Reset of the chip. */
         NXPLOG_FWDNLD_E("Performing a VEN Reset");
@@ -1098,13 +1084,13 @@ static NFCSTATUS phDnldNfc_UpdateRsp(pphDnldNfc_DlContext_t pDlContext,
     if (PH_DL_CMD_WRITE == (pDlContext->tCmdId)) {
       if (PH_DL_STATUS_OK == (pInfo->pBuff[PHDNLDNFC_FRAMESTATUS_OFFSET])) {
         /* first write frame response received case */
-        if ((pDlContext->tRWInfo.bFirstWrReq) == true) {
+        if (true == (pDlContext->tRWInfo.bFirstWrReq)) {
           NXPLOG_FWDNLD_D("First Write Frame Success Status received!!");
           (pDlContext->tRWInfo.bFirstWrReq) = false;
         }
 
-        if ((pDlContext->tRWInfo.bFirstChunkResp) == true) {
-          if ((pDlContext->tRWInfo.bFramesSegmented) == false) {
+        if (true == (pDlContext->tRWInfo.bFirstChunkResp)) {
+          if (false == (pDlContext->tRWInfo.bFramesSegmented)) {
             NXPLOG_FWDNLD_D("Chunked Write Frame Success Status received!!");
             (pDlContext->tRWInfo.wRemChunkBytes) -=
                 (pDlContext->tRWInfo.wBytesToSendRecv);
@@ -1121,8 +1107,8 @@ static NFCSTATUS phDnldNfc_UpdateRsp(pphDnldNfc_DlContext_t pDlContext,
           (pDlContext->tRWInfo.wOffset) +=
               (pDlContext->tRWInfo.wBytesToSendRecv);
         }
-      } else if (((pDlContext->tRWInfo.bFirstChunkResp) == false) &&
-                 ((pDlContext->tRWInfo.bFramesSegmented) == true) &&
+      } else if ((false == (pDlContext->tRWInfo.bFirstChunkResp)) &&
+                 (true == (pDlContext->tRWInfo.bFramesSegmented)) &&
                  (PHDNLDNFC_FIRST_FRAGFRAME_RESP ==
                   (pInfo->pBuff[PHDNLDNFC_FRAMESTATUS_OFFSET]))) {
         (pDlContext->tRWInfo.bFirstChunkResp) = true;
@@ -1133,12 +1119,12 @@ static NFCSTATUS phDnldNfc_UpdateRsp(pphDnldNfc_DlContext_t pDlContext,
         (pDlContext->tRWInfo.wOffset) += (pDlContext->tRWInfo.wBytesToSendRecv);
 
         /* first write frame response received case */
-        if ((pDlContext->tRWInfo.bFirstWrReq) == true) {
+        if (true == (pDlContext->tRWInfo.bFirstWrReq)) {
           NXPLOG_FWDNLD_D("First Write Frame Success Status received!!");
           (pDlContext->tRWInfo.bFirstWrReq) = false;
         }
-      } else if (((pDlContext->tRWInfo.bFirstChunkResp) == true) &&
-                 ((pDlContext->tRWInfo.bFramesSegmented) == true) &&
+      } else if ((true == (pDlContext->tRWInfo.bFirstChunkResp)) &&
+                 (true == (pDlContext->tRWInfo.bFramesSegmented)) &&
                  (PHDNLDNFC_NEXT_FRAGFRAME_RESP ==
                   (pInfo->pBuff[PHDNLDNFC_FRAMESTATUS_OFFSET]))) {
         (pDlContext->tRWInfo.wRemChunkBytes) -=

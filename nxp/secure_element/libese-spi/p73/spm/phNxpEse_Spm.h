@@ -28,8 +28,8 @@
 #include <phNxpEseFeatures.h>
 /*! SPI Power Manager (SPM) possible error codes */
 typedef enum spm_power {
-  SPM_POWER_ENABLE = 0,
-  SPM_POWER_DISABLE,     /*!< SPM power disable */
+  SPM_POWER_DISABLE = 0,     /*!< SPM power disable */
+  SPM_POWER_ENABLE,    /*!< SPM power enable */
   SPM_POWER_RESET,       /*!< SPM Reset pwer */
   SPM_POWER_PRIO_ENABLE, /*!< SPM prio mode enable */
   SPM_POWER_PRIO_DISABLE /*!< SPM prio mode disable */
@@ -42,7 +42,8 @@ typedef enum spm_state {
   SPM_STATE_SPI = 0x0400,         /*!< ESE is being accessed by SPI */
   SPM_STATE_DWNLD = 0x0800,       /*!< NFCC fw download is in progress */
   SPM_STATE_SPI_PRIO = 0x1000,    /*!< Start of p61 access by SPI on priority*/
-  SPM_STATE_SPI_PRIO_END = 0x2000 /*!< End of p61 access by SPI on priority*/
+  SPM_STATE_SPI_PRIO_END = 0x2000,/*!< End of p61 access by SPI on priority*/
+  SPM_STATE_SPI_FAILED = 0x0010   /*SPI open/close failed*/
 #ifdef NXP_ESE_JCOP_DWNLD_PROTECTION
   ,
   SPM_STATE_JCOP_DWNLD = 0x8000 /*!< P73 state JCOP Download*/

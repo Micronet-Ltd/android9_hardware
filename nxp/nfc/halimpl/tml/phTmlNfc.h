@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015-2018 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,17 @@
 
 /*
  * Transport Mapping Layer header files containing APIs related to initializing,
- * reading
+ *reading
  * and writing data into files provided by the driver interface.
  *
  * API listed here encompasses Transport Mapping Layer interfaces required to be
- * mapped
+ *mapped
  * to different Interfaces and Platforms.
  *
  */
 
 #ifndef PHTMLNFC_H
 #define PHTMLNFC_H
-
 #include <phNfcCommon.h>
 
 /*
@@ -61,13 +60,13 @@
  * The value of field wStatus can be interpreted as:
  *
  *     - NFCSTATUS_SUCCESS                    Transaction performed
- * successfully.
+ *successfully.
  *     - NFCSTATUS_FAILED                     Failed to wait on Read/Write
- * operation.
+ *operation.
  *     - NFCSTATUS_INSUFFICIENT_STORAGE       Not enough memory to store data in
- * case of read.
+ *case of read.
  *     - NFCSTATUS_BOARD_COMMUNICATION_ERROR  Failure to Read/Write from the
- * file or timeout.
+ *file or timeout.
  */
 
 typedef struct phTmlNfc_TransactInfo {
@@ -106,9 +105,26 @@ typedef enum {
   phTmlNfc_e_ResetDevice = PH_TMLNFC_RESETDEVICE, /* Reset the device */
   phTmlNfc_e_EnableDownloadMode, /* Do the hardware setting to enter into
                                     download mode */
-  phTmlNfc_e_EnableNormalMode /* Hardware setting for normal mode of operation
-                                 */
-} phTmlNfc_ControlCode_t;     /* Control code for IOCTL call */
+  phTmlNfc_e_EnableNormalMode, /* Hardware setting for normal mode of operation*/
+  phTmlNfc_e_SetNfcServicePid, /* Register the Nfc service PID with the driver
+                                  */
+  phTmlNfc_e_GetP61PwrMode,    /* Get the current P61 mode of operation */
+  phTmlNfc_e_SetP61WiredMode,  /* Set the current P61 mode of operation to
+                                  Wired*/
+  phTmlNfc_e_SetP61IdleMode, /* Set the current P61 mode of operation to Idle*/
+  phTmlNfc_e_SetP61DisableMode, /* Set the ese vdd gpio to low*/
+  phTmlNfc_e_SetP61EnableMode,  /* Set the ese vdd gpio to high*/
+  phTmlNfc_e_RaiseEsePower,     /* Set the ese pwr gpio to high*/
+  phTmlNfc_e_ReleaseEsePower,   /* Set the ese pwr gpio to high*/
+  phTmlNfc_e_eSEChipRstMode,    /* ISO RST of P73*/
+  phTmlNfc_e_RelP61Access,      /*Release the P61 lock*/
+  phTmlNfc_e_SetLegacyPowerScheme,
+  phTmlNfc_e_SetExtPMUPowerScheme,
+  phTmlNfc_e_SetPN67TPowerScheme,
+  phTmlNfc_e_RelP61SvddWait,
+  phTmlNfc_e_SetJcopDwnldEnable,
+  phTmlNfc_e_SetJcopDwnldDisable
+} phTmlNfc_ControlCode_t; /* Control code for IOCTL call */
 
 /*
  * Enable / Disable Re-Transmission of Packets
@@ -161,6 +177,14 @@ typedef struct phTmlNfc_Context {
   sem_t txSemaphore;      /* Lock/Aquire txRx Semaphore */
   sem_t postMsgSemaphore; /* Semaphore to post message atomically by Reader &
                              writer thread */
+  pthread_mutex_t readInfoUpdateMutex; /*Mutex to synchronize read Info update*/
+  pthread_cond_t wait_busy_condition; /*Condition to wait reader thread*/
+  pthread_mutex_t wait_busy_lock;     /*Condition lock to wait reader thread*/
+  volatile uint8_t wait_busy_flag;    /*Condition flag to wait reader thread*/
+  volatile uint8_t
+      gWriterCbflag; /* flag to indicate write callback message is pushed to
+                        queue*/
+  long    nfc_service_pid; /*NFC Service PID to be used by driver to signal*/
 } phTmlNfc_Context_t;
 
 /*
@@ -188,17 +212,17 @@ typedef struct phTmlNfc_Config {
  * TML Deferred Callback structure used to invoke Upper layer Callback function.
  */
 typedef struct {
-  /* Deferred callback function to be invoked */
-  pphTmlNfc_DeferFuncPointer_t pDef_call;
-  /* Source identifier
-   *
-   * Identifier of the source which posted the message
-   */
+  pphTmlNfc_DeferFuncPointer_t
+      pDef_call; /*Deferred callback function to be invoked */
+                 /* Source identifier
+                  *
+                  * Identifier of the source which posted the message
+                  */
   uint32_t dwMsgPostedThread;
   /** Actual Message
    *
    * This is passed as a parameter passed to the deferred callback function
-   * pDef_call. */
+   *pDef_call. */
   void* pParams;
 } phTmlNfc_DeferMsg_t; /* DeferMsg structure passed to User Thread */
 
@@ -209,6 +233,8 @@ typedef enum {
 /* Function declarations */
 NFCSTATUS phTmlNfc_Init(pphTmlNfc_Config_t pConfig);
 NFCSTATUS phTmlNfc_Shutdown(void);
+NFCSTATUS phTmlNfc_Shutdown_CleanUp();
+void phTmlNfc_CleanUp(void);
 NFCSTATUS phTmlNfc_Write(uint8_t* pBuffer, uint16_t wLength,
                          pphTmlNfc_TransactCompletionCb_t pTmlWriteComplete,
                          void* pContext);
@@ -218,6 +244,9 @@ NFCSTATUS phTmlNfc_Read(uint8_t* pBuffer, uint16_t wLength,
 NFCSTATUS phTmlNfc_WriteAbort(void);
 NFCSTATUS phTmlNfc_ReadAbort(void);
 NFCSTATUS phTmlNfc_IoCtl(phTmlNfc_ControlCode_t eControlCode);
+NFCSTATUS phTmlNfc_UpdateReadCompleteCallback (
+    pphTmlNfc_TransactCompletionCb_t pTmlReadComplete);
+NFCSTATUS phTmlNfc_get_ese_access(void* pDevHandle, long timeout);
 void phTmlNfc_DeferredCall(uintptr_t dwThreadId,
                            phLibNfc_Message_t* ptWorkerMsg);
 void phTmlNfc_ConfigNciPktReTx(phTmlNfc_ConfigRetrans_t eConfig,

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,12 @@
  * OSAL Implementation for Timers.
  */
 
-#include <phNfcCommon.h>
-#include <phNfcTypes.h>
-#include <phNxpLog.h>
-#include <phNxpNciHal.h>
-#include <phOsalNfc_Timer.h>
 #include <signal.h>
+#include <phNfcTypes.h>
+#include <phOsalNfc_Timer.h>
+#include <phNfcCommon.h>
+#include <phNxpNciHal.h>
+#include <phNxpLog.h>
 
 #define PH_NFC_MAX_TIMER (5U)
 static phOsalNfc_TimerHandle_t apTimerInfo[PH_NFC_MAX_TIMER];
