@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,12 @@
  * Linux too)
  */
 
-#include <errno.h>
-#include <linux/ipc.h>
-#include <phDal4Nfc_messageQueueLib.h>
-#include <phNxpLog.h>
 #include <pthread.h>
+#include <phNxpLog.h>
+#include <linux/ipc.h>
 #include <semaphore.h>
+#include <errno.h>
+#include <phDal4Nfc_messageQueueLib.h>
 
 typedef struct phDal4Nfc_message_queue_item {
   phLibNfc_Message_t nMsg;

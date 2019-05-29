@@ -16,10 +16,16 @@
  *
  ******************************************************************************/
 #define LOG_TAG "NxpEseHal"
+#include "StateMachine.h"
+#include "StateMachineInfo.h"
+#include "SyncEvent.h"
 #include <log/log.h>
 #include <phNxpEseProto7816_3.h>
 
+SyncEvent gSpiTxLock;
+
 extern bool ese_debug_enabled;
+extern bool gMfcAppSessionCount;
 
 /******************************************************************************
 \section Introduction Introduction
@@ -207,6 +213,7 @@ static ESESTATUS phNxpEseProto7816_SendSFrame(sFrameInfo_t sFrameData) {
 
       pcb_byte |= PH_PROTO_7816_S_BLOCK_RSP;
       pcb_byte |= PH_PROTO_7816_S_WTX;
+      StateMachine::GetInstance().ProcessExtEvent(EVT_SPI_TX_WTX_RSP);
       break;
     default:
       ALOGE("Invalid S-block");
@@ -415,14 +422,17 @@ static ESESTATUS phNxpEseProto7816_SetNextIframeContxt(void) {
  ******************************************************************************/
 static ESESTATUS phNxpEseProro7816_SaveIframeData(uint8_t* p_data,
                                                   uint32_t data_len) {
-  ESESTATUS status = ESESTATUS_FAILED;
+  ESESTATUS status = ESESTATUS_SUCCESS;
   ALOGD_IF(ese_debug_enabled, "Enter %s ", __FUNCTION__);
+  if ((p_data == nullptr) || (data_len == 0)) {
+    ALOGE("%s -I Frame not stored. data_len = %x", __FUNCTION__, data_len);
+    return status;
+  }
   ALOGD_IF(ese_debug_enabled, "Data[0]=0x%x len=%d Data[%d]=0x%x", p_data[0],
            data_len, data_len - 1, p_data[data_len - 1]);
   if (ESESTATUS_SUCCESS != phNxpEse_StoreDatainList(data_len, p_data)) {
     ALOGE("%s - Error storing chained data in list", __FUNCTION__);
-  } else {
-    status = ESESTATUS_SUCCESS;
+    status = ESESTATUS_FAILED;
   }
   ALOGD_IF(ese_debug_enabled, "Exit %s ", __FUNCTION__);
   return status;
@@ -578,6 +588,7 @@ static ESESTATUS phNxpEseProto7816_DecodeFrame(uint8_t* p_data,
   if (0x00 == pcb_bits.msb) /* I-FRAME decoded should come here */
   {
     ALOGD_IF(ese_debug_enabled, "%s I-Frame Received", __FUNCTION__);
+    StateMachine::GetInstance().ProcessExtEvent(EVT_SPI_RX);
     phNxpEseProto7816_3_Var.wtx_counter = 0;
     phNxpEseProto7816_3_Var.phNxpEseRx_Cntx.lastRcvdFrameType = IFRAME;
     if (phNxpEseProto7816_3_Var.phNxpEseRx_Cntx.lastRcvdIframeInfo.seqNo !=
@@ -625,6 +636,7 @@ static ESESTATUS phNxpEseProto7816_DecodeFrame(uint8_t* p_data,
              (0x00 == pcb_bits.bit7)) /* R-FRAME decoded should come here */
   {
     ALOGD_IF(ese_debug_enabled, "%s R-Frame Received", __FUNCTION__);
+    StateMachine::GetInstance().ProcessExtEvent(EVT_SPI_RX);
     phNxpEseProto7816_3_Var.wtx_counter = 0;
     phNxpEseProto7816_3_Var.phNxpEseRx_Cntx.lastRcvdFrameType = RFRAME;
     phNxpEseProto7816_3_Var.phNxpEseRx_Cntx.lastRcvdRframeInfo.seqNo =
@@ -753,6 +765,7 @@ static ESESTATUS phNxpEseProto7816_DecodeFrame(uint8_t* p_data,
     int32_t frameType = (int32_t)(pcb & 0x3F); /*discard upper 2 bits */
     phNxpEseProto7816_3_Var.phNxpEseRx_Cntx.lastRcvdFrameType = SFRAME;
     if (frameType != WTX_REQ) {
+      StateMachine::GetInstance().ProcessExtEvent(EVT_SPI_RX);
       phNxpEseProto7816_3_Var.wtx_counter = 0;
     }
     switch (frameType) {
@@ -795,6 +808,7 @@ static ESESTATUS phNxpEseProto7816_DecodeFrame(uint8_t* p_data,
                  phNxpEseProto7816_3_Var.wtx_counter);
         ALOGD_IF(ese_debug_enabled, "%s Wtx_counter wtx_counter_limit - %lu",
                  __FUNCTION__, phNxpEseProto7816_3_Var.wtx_counter_limit);
+        StateMachine::GetInstance().ProcessExtEvent(EVT_SPI_RX_WTX_REQ);
         /* Previous sent frame is some S-frame but not WTX response S-frame */
         if (phNxpEseProto7816_3_Var.phNxpEseLastTx_Cntx.SframeInfo.sFrameType !=
                 WTX_RSP &&
@@ -891,7 +905,7 @@ static ESESTATUS phNxpEseProto7816_ProcessResponse(void) {
   uint32_t data_len = 0;
   uint8_t* p_data = NULL;
   ESESTATUS status = ESESTATUS_FAILED;
-  ALOGD_IF(ese_debug_enabled, "Enter %s ", __FUNCTION__);
+  ALOGD_IF(ese_debug_enabled, "Enter %s", __FUNCTION__);
   status = phNxpEseProto7816_GetRawFrame(&data_len, &p_data);
   ALOGD_IF(ese_debug_enabled, "%s p_data ----> %p len ----> 0x%x", __FUNCTION__,
            p_data, data_len);
@@ -903,7 +917,7 @@ static ESESTATUS phNxpEseProto7816_ProcessResponse(void) {
     if (status == ESESTATUS_SUCCESS) {
       /* Resetting the RNACK retry counter */
       phNxpEseProto7816_3_Var.rnack_retry_counter = PH_PROTO_7816_VALUE_ZERO;
-      phNxpEseProto7816_DecodeFrame(p_data, data_len);
+      status = phNxpEseProto7816_DecodeFrame(p_data, data_len);
     } else {
       ALOGE("%s LRC Check failed", __FUNCTION__);
       if (phNxpEseProto7816_3_Var.rnack_retry_counter <
@@ -990,12 +1004,40 @@ static ESESTATUS phNxpEseProto7816_ProcessResponse(void) {
 static ESESTATUS TransceiveProcess(void) {
   ESESTATUS status = ESESTATUS_FAILED;
   sFrameInfo_t sFrameInfo;
-
   ALOGD_IF(ese_debug_enabled, "Enter %s ", __FUNCTION__);
+
+  {
+    SyncEventGuard guard(gSpiTxLock);
+    ALOGD_IF(ese_debug_enabled, "%s: CurrentState:%d", __FUNCTION__,
+             StateMachine::GetInstance().GetCurrentState());
+    if (!StateMachine::GetInstance().isSpiTxRxAllowed()) {
+      if (gMfcAppSessionCount) {
+        ALOGD_IF(ese_debug_enabled,
+                 "%s: Waiting for either 2seconds or RF-OFF...", __FUNCTION__);
+        gSpiTxLock.wait(GUARD_WAIT_TIME_FOR_RF_OFF);
+        if (!StateMachine::GetInstance().isSpiTxRxAllowed()) {
+          phNxpEseProto7816_3_Var.phNxpEseProto7816_CurrentState =
+               PH_NXP_ESE_PROTO_7816_IDLE;
+          return ESESTATUS_WRITE_FAILED;
+        }
+      } else {
+        ALOGD_IF(ese_debug_enabled,
+                 "%s: Waiting for either 10seconds or RF-OFF...", __FUNCTION__);
+        gSpiTxLock.wait(MAX_WAIT_TIME_FOR_RF_OFF);
+        if (!StateMachine::GetInstance().isSpiTxRxAllowed()) {
+          phNxpEseProto7816_3_Var.phNxpEseProto7816_CurrentState =
+               PH_NXP_ESE_PROTO_7816_IDLE;
+          return ESESTATUS_WRITE_FAILED;
+        }
+      }
+    }
+  }
+
   while (phNxpEseProto7816_3_Var.phNxpEseProto7816_nextTransceiveState !=
          IDLE_STATE) {
     ALOGD_IF(ese_debug_enabled, "%s nextTransceiveState %x", __FUNCTION__,
              phNxpEseProto7816_3_Var.phNxpEseProto7816_nextTransceiveState);
+    StateMachine::GetInstance().ProcessExtEvent(EVT_SPI_TX);
     switch (phNxpEseProto7816_3_Var.phNxpEseProto7816_nextTransceiveState) {
       case SEND_IFRAME:
         status = phNxpEseProto7816_SendIframe(
@@ -1092,6 +1134,8 @@ ESESTATUS phNxpEseProto7816_Transceive(phNxpEse_data* pCmd,
       pRsp->len = pRes.len;
       pRsp->p_data = pRes.p_data;
     }
+  } else if (ESESTATUS_WRITE_FAILED == status) {
+    return status;
   } else {
     // fetch the data info and report to upper layer.
     wStatus = phNxpEse_GetData(&pRes.len, &pRes.p_data);
@@ -1259,8 +1303,12 @@ ESESTATUS phNxpEseProto7816_Close(
   phNxpEseProto7816_3_Var.phNxpEseProto7816_nextTransceiveState = SEND_S_EOS;
   status = TransceiveProcess();
   if (ESESTATUS_FAILED == status) {
+    uint32_t data_len = 0;
+    uint8_t* p_data = NULL;
     /* reset all the structures */
-    ALOGE("%s TransceiveProcess failed ", __FUNCTION__);
+    ALOGE("%s TransceiveProcess failed , hard reset to proceed", __FUNCTION__);
+    /*Clear response buffer data if transceive failed*/
+    phNxpEse_GetData(&data_len, &p_data);
   }
   phNxpEse_memcpy(pSecureTimerParams,
                   &phNxpEseProto7816_3_Var.secureTimerParams,
@@ -1291,8 +1339,12 @@ ESESTATUS phNxpEseProto7816_IntfReset(
       SEND_S_INTF_RST;
   status = TransceiveProcess();
   if (ESESTATUS_FAILED == status) {
+    uint32_t data_len = 0;
+    uint8_t* p_data = NULL;
     /* reset all the structures */
-    ALOGE("%s TransceiveProcess failed ", __FUNCTION__);
+    ALOGE("%s TransceiveProcess failed , hard reset to proceed", __FUNCTION__);
+    /*Clear response buffer data if transceive failed*/
+    phNxpEse_GetData(&data_len, &p_data);
   }
   phNxpEse_memcpy(pSecureTimerParam, &phNxpEseProto7816_3_Var.secureTimerParams,
                   sizeof(phNxpEseProto7816SecureTimer_t));

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 NXP Semiconductors
+ * Copyright (C) 2018 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,5 +52,5 @@ typedef enum {
 **                  -1   - ioctl operation failure
 **
 *******************************************************************************/
-int phPalEse_spi_ioctl(phPalEse_ControlCode_t eControlCode,void *pDevHandle, long level);
-
+int phPalEse_spi_ioctl(phPalEse_ControlCode_t eControlCode, void *pDevHandle,
+                       long level);

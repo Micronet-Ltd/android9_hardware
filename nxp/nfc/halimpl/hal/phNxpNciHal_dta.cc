@@ -1,26 +1,25 @@
 /*
-* Copyright (C) 2012-2014 NXP Semiconductors
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*      http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/#include <log/log.h>
-
-#include <phNxpConfig.h>
+ * Copyright (C) 2015 NXP Semiconductors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include <phNxpLog.h>
 #include <phNxpNciHal_dta.h>
+#include <phNxpConfig.h>
 
 /*********************** Global Variables *************************************/
 static phNxpDta_Control_t nxpdta_ctrl = {0, 0, 0};
-extern bool nfc_debug_enabled;
+
 /*******************************************************************************
 **
 ** Function         phNxpEnable_DtaMode
@@ -33,7 +32,7 @@ void phNxpEnable_DtaMode(uint16_t pattern_no) {
   nxpdta_ctrl.dta_ctrl_flag = false;
   nxpdta_ctrl.dta_t1t_flag = false;
   nxpdta_ctrl.dta_pattern_no = pattern_no;
-  NXPLOG_NCIHAL_D(">>>>DTA - Mode is enabled");
+  ALOGD(">>>>DTA - Mode is enabled");
   nxpdta_ctrl.dta_ctrl_flag = true;
 }
 
@@ -55,7 +54,7 @@ void phNxpDisable_DtaMode(void) {
  *
  * Description      This function checks the DTA mode is enable or not.
  *
- * Returns          It returns TRUE if DTA enabled otherwise FALSE
+ * Returns          It returns true if DTA enabled otherwise false
  *
  ******************************************************************************/
 NFCSTATUS phNxpDta_IsEnable(void) { return nxpdta_ctrl.dta_ctrl_flag; }
@@ -85,7 +84,7 @@ NFCSTATUS phNxpNHal_DtaUpdate(uint16_t* cmd_len, uint8_t* p_cmd_data,
   NFCSTATUS status = NFCSTATUS_SUCCESS;
 
   if (nxpdta_ctrl.dta_ctrl_flag == true) {
-    // Workaround for DTA, block the set config command with general bytes */
+    // DTA: Block the set config command with general bytes */
     if (p_cmd_data[0] == 0x20 && p_cmd_data[1] == 0x02 &&
         p_cmd_data[2] == 0x17 && p_cmd_data[3] == 0x01 &&
         p_cmd_data[4] == 0x29 && p_cmd_data[5] == 0x14) {
@@ -102,8 +101,7 @@ NFCSTATUS phNxpNHal_DtaUpdate(uint16_t* cmd_len, uint8_t* p_cmd_data,
       phNxpNciHal_print_packet("DTARECV", p_rsp_data, 5);
 
       status = NFCSTATUS_FAILED;
-      NXPLOG_NCIHAL_D(
-          "Going through DTA workaround - Block set config command END");
+      NXPLOG_NCIHAL_D("DTA - Block set config command END");
 
     } else if (p_cmd_data[0] == 0x21 && p_cmd_data[1] == 0x08 &&
                p_cmd_data[2] == 0x04 && p_cmd_data[3] == 0xFF &&

@@ -24,6 +24,8 @@
 #define _PHNXPESE_PAL_SPI_H
 
 /* Basic type definitions */
+#include <IntervalTimer.h>
+#include <StateMachineInfo.h>
 #include <phNxpEsePal.h>
 
 /*!
@@ -42,15 +44,22 @@
 /*!
  * \brief ESE wakeup delay in case of write error retry
  */
-#define WAKE_UP_DELAY 1000
+#define WRITE_WAKE_UP_DELAY 1000
+
+/*!
+ * \brief ESE SOF polling delay
+ */
+#define READ_WAKE_UP_DELAY 100
+
 /*!
  * \brief ESE wakeup delay in case of write error retry
  */
 #define NAD_POLLING_SCALER 10
+
 /*!
- * \brief ESE wakeup delay in case of write error retry
+ * \brief Magic type specific to the ESE device driver
  */
-#define CHAINED_PKT_SCALER 1
+#define P61_MAGIC 0xEA
 
 /* Function declarations */
 /**
@@ -63,6 +72,14 @@
 
 void phPalEse_spi_close(void* pDevHandle);
 
+/**
+ * \ingroup eSe_PAL_Spi
+ * \brief DWP SPI SYNC close
+ *
+ * \retval  None
+ *
+ */
+void phPalEse_spi_dwp_sync_close(void);
 /**
  * \ingroup eSe_PAL_Spi
  * \brief Open and configure ESE device
@@ -143,5 +160,52 @@ void phPalEse_spi_print_packet(const char* pString, const uint8_t* p_data,
  *
  */
 void phPalEse_spi_sleep(uint32_t usec);
+
+/**
+ * \ingroup eSe_PAL_Spi
+ * \brief This function stops a rf debounce timer
+ *
+ * \param[in]
+ *
+ * \retval   void
+ *
+ */
+void phPalEse_spi_stop_debounce_timer();
+
+/**
+ * \ingroup eSe_PAL_Spi
+ * \brief This function starts a rf denounce timer
+ *
+ * \param[in]    millisecs    - number of millisec
+ *
+ * \retval   void
+ *
+ */
+void phPalEse_spi_start_debounce_timer(unsigned long millisecs);
+
+/**
+ * \ingroup eSe_PAL_Spi
+ * \brief This function sends rf off event to state machine
+ *
+ * \param[in]
+ *
+ * \retval   void
+ *
+ */
+void phPalEse_spi_rf_off_timer_expired_cb(union sigval);
+
+/*******************************************************************************
+**
+** Function         phPalEse_spi_match_app_signatures
+**
+** Description
+**
+** Parameters       none
+**
+** Returns          true/false
+**
+*******************************************************************************/
+ESESTATUS phPalEse_spi_match_app_signatures(std::vector<uint8_t> signature);
+
 /** @} */
 #endif /*  _PHNXPESE_PAL_SPI_H    */
