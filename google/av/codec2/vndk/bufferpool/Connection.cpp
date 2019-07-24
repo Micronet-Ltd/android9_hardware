@@ -27,19 +27,26 @@ namespace implementation {
 Return<void> Connection::fetch(uint64_t transactionId, uint32_t bufferId, fetch_cb _hidl_cb) {
     ResultStatus status = ResultStatus::CRITICAL_ERROR;
     if (mInitialized && mAccessor) {
-        if (bufferId != SYNC_BUFFERID) {
+       if (bufferId != SYNC_BUFFERID) {
             const native_handle_t *handle = NULL;
             status = mAccessor->fetch(
                     mConnectionId, transactionId, bufferId, &handle);
             if (status == ResultStatus::OK) {
-                _hidl_cb(status, Buffer{bufferId, handle});
+                Buffer buffer = {};
+                buffer.id = bufferId;
+                buffer.buffer = handle;
+                _hidl_cb(status, buffer);
                 return Void();
             }
         } else {
             mAccessor->cleanUp(false);
         }
     }
-    _hidl_cb(status, Buffer{0, nullptr});
+    Buffer buffer = {};
+    buffer.id = 0;
+    buffer.buffer = nullptr;
+
+    _hidl_cb(status, buffer);    
     return Void();
 }
 
