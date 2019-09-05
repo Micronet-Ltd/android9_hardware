@@ -83,6 +83,8 @@ char const*const VLED_0
 char const*const VLED_1
         = "/sys/class/leds/vled1/brightness";
 
+const char *aled = "/sys/class/leds/aled/brightness";
+
 /**
  * device methods
  */
@@ -323,39 +325,50 @@ set_light_keyboard(struct light_device_t* dev,
 {
     int err = 0;
     unsigned int adj_color;
+    char portable[PROPERTY_VALUE_MAX];
 
     if(!dev) {
         return -1;
     }
 
-    unsigned int color = state->color & 0x00FFFFFF;
-
-    if ( (color & 0x00FF0000) <= 0x000F0000 ) { // make sure RED > 0F
-        color |= 0x000F0000;
-    }
-    if ( (color & 0x0000FF00) <= 0x00000F00 ) { // make sure GREEN > 0F
-        color |= 0x00000F00;
-    }
-    if ( (color & 0x000000FF) <= 0x0000000F ) { // make sure BLUE > 0F
-        color |= 0x0000000F;
+    portable[PROPERTY_VALUE_MAX - 1] = 0;
+    if (property_get("persist.vendor.board.config", portable, 0) <= 0 ) {
+        strncpy(portable, "portable", sizeof("portable"));
     }
 
-    // the RGB part in ARGB remains the same, the A part is replaced by rgb_to_brightness
-    adj_color = (color & 0x00FFFFFF) +((rgb_to_brightness(state)/2)<<24 & 0xFF000000);
-    
+    if (0 != strncmp(portable, "smartcam", strlen("smartcam"))) {
+        unsigned int color = state->color & 0x00FFFFFF;
 
-    pthread_mutex_lock(&g_lock);
-    err = write_int(VLED_0, adj_color);
-    if ( err < 0 ) {
-        ALOGE("%s: Writing (as unsigned int) to vled 0 failed: errno %d, error: %s \n",__func__,errno,strerror(errno));
+        if ( (color & 0x00FF0000) <= 0x000F0000 ) { // make sure RED > 0F
+            color |= 0x000F0000;
+        }
+        if ( (color & 0x0000FF00) <= 0x00000F00 ) { // make sure GREEN > 0F
+            color |= 0x00000F00;
+        }
+        if ( (color & 0x000000FF) <= 0x0000000F ) { // make sure BLUE > 0F
+            color |= 0x0000000F;
+        }
+
+        // the RGB part in ARGB remains the same, the A part is replaced by rgb_to_brightness
+        adj_color = (color & 0x00FFFFFF) +((rgb_to_brightness(state)/2)<<24 & 0xFF000000);
+
+
+        pthread_mutex_lock(&g_lock);
+        err = write_int(VLED_0, adj_color);
+        if ( err < 0 ) {
+            ALOGE("%s: Writing (as unsigned int) to vled 0 failed: errno %d, error: %s \n",__func__,errno,strerror(errno));
+        }
+
+        err = write_int(VLED_1, adj_color);
+        if ( err < 0 ) {
+            ALOGE("%s: Writing (as unsigned int) to vled 1 failed: errno %d, error: %s \n",__func__,errno,strerror(errno));
+        }
+
+        pthread_mutex_unlock(&g_lock);
+    } else {
+        err = write_int(aled, state->color & 1);
     }
 
-    err = write_int(VLED_1, adj_color);
-    if ( err < 0 ) {
-        ALOGE("%s: Writing (as unsigned int) to vled 1 failed: errno %d, error: %s \n",__func__,errno,strerror(errno));
-    }
-
-    pthread_mutex_unlock(&g_lock);
     return err;
 }
 
