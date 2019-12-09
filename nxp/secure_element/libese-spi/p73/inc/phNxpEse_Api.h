@@ -84,6 +84,16 @@ ESESTATUS phNxpEse_init(phNxpEse_initParams initParams);
 /******************************************************************************
  * \ingroup spi_libese
  *
+ * \brief  Check if libese has opened
+ *
+ * \retval return false if it is close, otherwise true.
+ *
+ ******************************************************************************/
+bool phNxpEse_isOpen();
+
+/******************************************************************************
+ * \ingroup spi_libese
+ *
  * \brief  This function is used to communicate from nfc-hal to ese-hal
  *
  * \retval This function return ESESTATUS_SUCCES (0) in case of success
@@ -91,6 +101,7 @@ ESESTATUS phNxpEse_init(phNxpEse_initParams initParams);
  *
  ******************************************************************************/
 ESESTATUS phNxpEse_spiIoctl(uint64_t ioctlType, void* p_data);
+
 /**
  * \ingroup spi_libese
  * \brief This function is called by Jni during the

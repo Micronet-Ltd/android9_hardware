@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,30 +17,29 @@
 #ifndef _PHNXPNCIHAL_ADAPTATION_H_
 #define _PHNXPNCIHAL_ADAPTATION_H_
 
+#include <hardware/hardware.h>
 #include <hardware/nfc.h>
 #include <android/hardware/nfc/1.1/INfc.h>
 #include <android/hardware/nfc/1.1/types.h>
 
 using ::android::hardware::nfc::V1_1::NfcConfig;
 
-typedef struct {
-  struct nfc_nci_device nci_device;
-
-  /* Local definitions */
-} pn547_dev_t;
-
 /* NXP HAL functions */
+
 int phNxpNciHal_open(nfc_stack_callback_t* p_cback,
                      nfc_stack_data_callback_t* p_data_cback);
-int phNxpNciHal_MinOpen();
 int phNxpNciHal_write(uint16_t data_len, const uint8_t* p_data);
+int phNxpNciHal_ioctl(long arg, void* p_data);
 int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params);
 int phNxpNciHal_pre_discover(void);
 int phNxpNciHal_close(bool);
 int phNxpNciHal_configDiscShutdown(void);
 int phNxpNciHal_control_granted(void);
 int phNxpNciHal_power_cycle(void);
-int phNxpNciHal_ioctl(long arg, void* p_data);
-void phNxpNciHal_do_factory_reset(void);
 void phNxpNciHal_getVendorConfig(NfcConfig& config);
+int phNxpNciHal_MinInit(nfc_stack_callback_t* p_cback,
+                        nfc_stack_data_callback_t* p_data_cback);
+void phNxpNciHal_reset_nfcee_session(bool force_session_reset);
+int phNxpNciHal_Minclose(void);
+int phNxpNciHal_getFWDownloadFlag(uint8_t* fwDnldRequest);
 #endif /* _PHNXPNCIHAL_ADAPTATION_H_ */

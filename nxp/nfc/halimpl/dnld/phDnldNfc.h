@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@
  *
  * Callback for handling the received data/response from PN54X.
  * Parameters to be passed/registered to download context during respective
- * download function call:
+ *download function call:
  *      pContext - Upper layer context
  *      wStatus  - Status of the transaction
  *      pInfo    - Contains the Transaction Info
@@ -48,12 +48,13 @@ typedef void (*pphDnldNfc_RspCb_t)(void* pContext, NFCSTATUS wStatus,
 
 /* PN551 ChipVersion MRA1.0 */
 #define PHDNLDNFC_HWVER_PN551_MRA1_0 (0x08U)
-/* PN553-NCI1.0 ChipVersion MRA1.0 */
-#define PHDNLDNFC_HWVER_PN553_MRA1_0 (0x0BU)
-/* PN553 A0 -> 0x40 hardware version
-   PN553 B0 -> 0x41
-   PN80T A0 -> 0x50
-   PN80T B0 -> 0x51 */
+
+#define PHDNLDNFC_HWVER_PN553_MRA1_0 \
+  (0x0BU) /* PN553-NCI1.0 ChipVersion MRA1.0 */
+          /* PN553 A0 -> 0x40 hardware version
+             PN553 B0 -> 0x41
+             PN80T A0 -> 0x50
+             PN80T B0 -> 0x51 */
 #define PHDNLDNFC_HWVER_PN553_MRA1_0_UPDATED (0x40U)
 #define PHDNLDNFC_HWVER_PN557_MRA1_0 (0x01U)
 /*
@@ -133,12 +134,8 @@ extern NFCSTATUS phDnldNfc_LoadPKInfo(void);
 extern void phDnldNfc_CloseFwLibHandle(void);
 extern NFCSTATUS phDnldNfc_LoadFW(const char* pathName, uint8_t** pImgInfo,
                                   uint16_t* pImgInfoLen);
-extern NFCSTATUS phDnldNfc_LoadBinFW(const char* pathName, uint8_t** pImgInfo,
-                                     uint16_t* pImgInfoLen);
-#if (NFC_NXP_CHIP_TYPE != PN547C2)
 extern NFCSTATUS phDnldNfc_LoadRecoveryFW(const char* pathName,
                                           uint8_t** pImgInfo,
                                           uint16_t* pImgInfoLen);
-#endif
 extern NFCSTATUS phDnldNfc_UnloadFW(void);
 #endif /* PHDNLDNFC_H */

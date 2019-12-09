@@ -16,8 +16,10 @@
  *
  ******************************************************************************/
 #define LOG_TAG "NxpEseHal"
+#define MAX_INIT_RETRY_CNT 5
 #include <log/log.h>
 
+#include "LsClient.h"
 #include "SecureElement.h"
 #include "phNxpEse_Api.h"
 
@@ -33,7 +35,6 @@ sp<V1_0::ISecureElementHalCallback> SecureElement::mCallbackV1_0 = nullptr;
 
 SecureElement::SecureElement()
     : mOpenedchannelCount(0),
-      mIsEseInitialized(false),
       mOpenedChannels{false, false, false, false} {}
 
 Return<void> SecureElement::init(
@@ -50,16 +51,44 @@ Return<void> SecureElement::init(
       ALOGE("%s: Failed to register death notification", __func__);
     }
   }
+  if (isSeInitialized()) {
+    clientCallback->onStateChange(true);
+    return Void();
+  }
 
-  status = seHalInit();
+  int initRetryCount = 0;
+
+  do {
+    status = seHalInit();
+    if (status != ESESTATUS_SUCCESS) {
+      initRetryCount ++;
+      if (phNxpEse_close() != ESESTATUS_SUCCESS)
+        ALOGE("%s: phNxpEse_close failed!!!", __func__);
+      usleep(2* 1000 * 1000);
+    }else {
+      break;
+    }
+  } while( initRetryCount < MAX_INIT_RETRY_CNT);
+
   if (status != ESESTATUS_SUCCESS) {
     clientCallback->onStateChange(false);
     return Void();
   }
 
-  clientCallback->onStateChange(true);
-
-  seHalDeInit();
+  LSCSTATUS lsStatus = LSC_doDownload(clientCallback);
+  /*
+   * LSC_doDownload returns LSCSTATUS_FAILED in case thread creation fails.
+   * So return callback as false.
+   * Otherwise callback will be called in LSDownload module.
+   */
+  if (lsStatus != LSCSTATUS_SUCCESS) {
+    ALOGE("%s: LSDownload thread creation failed!!!", __func__);
+    SecureElementStatus sestatus = seHalDeInit();
+    if (sestatus != SecureElementStatus::SUCCESS) {
+      ALOGE("%s: seHalDeInit failed!!!", __func__);
+    }
+    clientCallback->onStateChange(false);
+  }
   return Void();
 }
 
@@ -73,9 +102,9 @@ Return<bool> SecureElement::isCardPresent() { return true; }
 
 Return<void> SecureElement::transmit(const hidl_vec<uint8_t>& data,
                                      transmit_cb _hidl_cb) {
+  ESESTATUS status = ESESTATUS_FAILED;
   phNxpEse_data cmdApdu;
   phNxpEse_data rspApdu;
-  ESESTATUS status = ESESTATUS_FAILED;
   phNxpEse_memset(&cmdApdu, 0x00, sizeof(phNxpEse_data));
   phNxpEse_memset(&rspApdu, 0x00, sizeof(phNxpEse_data));
 
@@ -87,11 +116,16 @@ Return<void> SecureElement::transmit(const hidl_vec<uint8_t>& data,
   }
 
   hidl_vec<uint8_t> result;
-  if (status != ESESTATUS_SUCCESS) {
-    ALOGE("%s: transmit failed!!!", __func__);
-  } else {
+  if (status == ESESTATUS_WRITE_FAILED) {
+    ALOGE("%s: transmit failed, nfc in use!!!", __func__);
+    result.resize(2);
+    result[0] = 0x65;
+    result[1] = ESESTATUS_WRITE_FAILED;
+  } else if (status == ESESTATUS_SUCCESS) {
     result.resize(rspApdu.len);
     memcpy(&result[0], rspApdu.p_data, rspApdu.len);
+  } else {
+    ALOGE("%s: transmit failed!!!", __func__);
   }
   _hidl_cb(result);
   phNxpEse_free(cmdApdu.p_data);
@@ -108,7 +142,7 @@ Return<void> SecureElement::openLogicalChannel(const hidl_vec<uint8_t>& aid,
   resApduBuff.channelNumber = 0xff;
   memset(&resApduBuff, 0x00, sizeof(resApduBuff));
 
-  if (!mIsEseInitialized) {
+  if (!isSeInitialized()) {
     ESESTATUS status = seHalInit();
     if (status != ESESTATUS_SUCCESS) {
       ALOGE("%s: seHalInit Failed!!!", __func__);
@@ -156,6 +190,13 @@ Return<void> SecureElement::openLogicalChannel(const hidl_vec<uint8_t>& aid,
   phNxpEse_free(rspApdu.p_data);
 
   if (sestatus != SecureElementStatus::SUCCESS) {
+    /*If first logical channel open fails, DeInit SE*/
+    if (isSeInitialized() && (mOpenedchannelCount == 0)) {
+      SecureElementStatus deInitStatus = seHalDeInit();
+      if (deInitStatus != SecureElementStatus::SUCCESS) {
+        ALOGE("%s: seDeInit Failed", __func__);
+      }
+    }
     /*If manageChanle is failed in any of above cases
     send the callback and return*/
     _hidl_cb(resApduBuff, sestatus);
@@ -229,7 +270,7 @@ Return<void> SecureElement::openBasicChannel(const hidl_vec<uint8_t>& aid,
                                              openBasicChannel_cb _hidl_cb) {
   hidl_vec<uint8_t> result;
 
-  if (!mIsEseInitialized) {
+  if (!isSeInitialized()) {
     ESESTATUS status = seHalInit();
     if (status != ESESTATUS_SUCCESS) {
       ALOGE("%s: seHalInit Failed!!!", __func__);
@@ -345,8 +386,9 @@ SecureElement::closeChannel(uint8_t channelNumber) {
 
   if ((channelNumber == DEFAULT_BASIC_CHANNEL) ||
       (sestatus == SecureElementStatus::SUCCESS)) {
+    if(mOpenedChannels[channelNumber] != false)
+      mOpenedchannelCount--;
     mOpenedChannels[channelNumber] = false;
-    mOpenedchannelCount--;
     /*If there are no channels remaining close secureElement*/
     if (mOpenedchannelCount == 0) {
       sestatus = seHalDeInit();
@@ -368,6 +410,8 @@ void SecureElement::serviceDied(uint64_t /*cookie*/, const wp<IBase>& /*who*/) {
   }
 }
 
+bool SecureElement::isSeInitialized() { return phNxpEse_isOpen(); }
+
 ESESTATUS SecureElement::seHalInit() {
   ESESTATUS status = ESESTATUS_SUCCESS;
   phNxpEse_initParams initParams;
@@ -381,8 +425,6 @@ ESESTATUS SecureElement::seHalInit() {
     status = phNxpEse_init(initParams);
     if (status != ESESTATUS_SUCCESS) {
       ALOGE("%s: SecureElement init failed!!!", __func__);
-    } else {
-      mIsEseInitialized = true;
     }
   }
   return status;
@@ -400,7 +442,6 @@ SecureElement::seHalDeInit() {
     if (status != ESESTATUS_SUCCESS) {
       sestatus = SecureElementStatus::FAILED;
     } else {
-      mIsEseInitialized = false;
       sestatus = SecureElementStatus::SUCCESS;
 
       for (uint8_t xx = 0; xx < MAX_LOGICAL_CHANNELS; xx++) {

@@ -133,6 +133,14 @@ persist.vendor.audio.fluence.voicecall=true\
 persist.vendor.audio.fluence.voicerec=false\
 persist.vendor.audio.fluence.speaker=true
 
+
+#wsl modify
+ifeq (, $(filter msm8953_64_c801, $(TARGET_PRODUCT)))
+PRODUCT_PROPERTY_OVERRIDES += persist.vendor.audio.fluence.speaker=true
+else
+PRODUCT_PROPERTY_OVERRIDES += persist.vendor.audio.fluence.speaker=false
+endif
+
 #disable tunnel encoding
 PRODUCT_PROPERTY_OVERRIDES += \
 vendor.audio.tunnel.encode=false

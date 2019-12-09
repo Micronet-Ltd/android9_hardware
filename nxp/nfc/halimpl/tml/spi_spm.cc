@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 NXP Semiconductors
+ * Copyright (C) 2018 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,43 +39,46 @@
 **                  -1   - ioctl operation failure
 **
 *******************************************************************************/
-int phPalEse_spi_ioctl(phPalEse_ControlCode_t eControlCode,void *pDevHandle, long level)
-{
-    int ret;
-    NXPLOG_TML_D("phPalEse_spi_ioctl(), ioctl %x , level %lx", eControlCode, level);
+int phPalEse_spi_ioctl(phPalEse_ControlCode_t eControlCode, void *pDevHandle,
+                       long level) {
+  int ret;
+  NXPLOG_TML_D("phPalEse_spi_ioctl(), ioctl %x , level %lx", eControlCode,
+               level);
 
   if (NULL == pDevHandle) {
     return -1;
   }
   switch (eControlCode) {
     case phPalEse_e_ChipRst:
-        if(level == 1 || level == 0)
+      if ((level&0xF1) || (level&0xF0))
         ret = ioctl((intptr_t)pDevHandle, P61_SET_SPI_PWR, level);
-        else
-        ret=0;
-        break;
+      else
+        ret = 0;
+      break;
 
     case phPalEse_e_GetSPMStatus:
-        ret = ioctl((intptr_t)pDevHandle, P61_GET_PWR_STATUS, level);
-        break;
+      ret = ioctl((intptr_t)pDevHandle, P61_GET_PWR_STATUS, &level);
+      if (ret == 0)
+        ret = (int)level;
+      break;
 
     case phPalEse_e_SetPowerScheme:
-         ret=0;
-        break;
-   case phPalEse_e_GetEseAccess:
-         ret=0;
-        break;
-#if(NXP_ESE_JCOP_DWNLD_PROTECTION == TRUE)
+      ret = 0;
+      break;
+    case phPalEse_e_GetEseAccess:
+      ret = 0;
+      break;
+#if (NXP_ESE_JCOP_DWNLD_PROTECTION == TRUE)
     case phPalEse_e_SetJcopDwnldState:
-        ret=0;
-        break;
+      ret = 0;
+      break;
 #endif
     case phPalEse_e_DisablePwrCntrl:
-        ret = ioctl((intptr_t)pDevHandle, P61_SET_SPI_PWR, 1);
-        break;
+      ret = ioctl((intptr_t)pDevHandle, P61_SET_SPI_PWR, 1);
+      break;
     default:
-        ret=-1;
-        break;
-    }
-    return ret;
+      ret = -1;
+      break;
+  }
+  return ret;
 }

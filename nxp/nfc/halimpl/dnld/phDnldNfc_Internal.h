@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,15 +116,6 @@ typedef enum {
 } phDnldNfc_FrameInputType_t;
 
 /*
- * Enum definition contains Firmware file format
- */
-typedef enum phDnldNfc_FwFormat {
-  FW_FORMAT_UNKNOWN = 0x00,
-  FW_FORMAT_BIN = 0x01,
-  FW_FORMAT_SO = 0x02,
-} phDnldNfc_FwFormat_t;
-
-/*
  * Contains Host Frame Buffer information.
  */
 typedef struct phDnldNfc_FrameInfo {
@@ -208,7 +199,6 @@ typedef struct phDnldNfc_DlContext {
   phDnldNfc_RWInfo_t tRWInfo; /* Read/Write segmented frame info */
   phDnldNfc_Status_t tLastStatus; /* saved status to distinguish signature or
                                      pltform recovery */
-  phDnldNfc_FwFormat_t FwFormat;  /*FW file format either lib or bin*/
 } phDnldNfc_DlContext_t,
     *pphDnldNfc_DlContext_t; /* pointer to #phDnldNfc_DlContext_t structure */
 
