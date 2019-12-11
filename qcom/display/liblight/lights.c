@@ -175,7 +175,7 @@ set_light_backlight(struct light_device_t* dev,
 
 static int
 set_speaker_light_locked(struct light_device_t* dev,
-        struct light_state_t const* state)
+        struct light_state_t const* state, unsigned led_mask)
 {
     int red, green, blue;
     int blink;
@@ -238,9 +238,15 @@ set_speaker_light_locked(struct light_device_t* dev,
                 write_int(BLUE_LED_FILE, 0);
         }
     } else {
-        write_int(RED_LED_FILE, red);
-        write_int(GREEN_LED_FILE, green);
-        write_int(BLUE_LED_FILE, blue);
+        if (led_mask & 4) {
+            write_int(RED_LED_FILE, red);
+        }
+        if (led_mask & 2) {
+            write_int(GREEN_LED_FILE, green);
+        }
+        if (led_mask & 1) {
+            write_int(BLUE_LED_FILE, blue);
+        }
     }
 
     return 0;
@@ -251,10 +257,13 @@ static int set_light_battery(struct light_device_t* dev,struct light_state_t con
 static void
 handle_speaker_battery_locked(struct light_device_t* dev)
 {
+    unsigned led_mask = 0;
     if (dev->set_light == set_light_battery) {
-        set_speaker_light_locked(dev, &g_battery);
+        led_mask |= 4;
+        set_speaker_light_locked(dev, &g_battery, led_mask);
     } else {
-        set_speaker_light_locked(dev, &g_notification);
+        led_mask |= 3;
+        set_speaker_light_locked(dev, &g_notification, led_mask);
     }
 #if 0
     if (is_lit(&g_battery)) {
