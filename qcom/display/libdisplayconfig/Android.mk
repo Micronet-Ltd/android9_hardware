@@ -3,6 +3,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE                  := libdisplayconfig
 LOCAL_MODULE_TAGS             := optional
+LOCAL_VENDOR_MODULE           := true
 LOCAL_C_INCLUDES              := $(common_includes)
 LOCAL_HEADER_LIBRARIES        := display_headers
 LOCAL_SRC_FILES               := DisplayConfig.cpp
