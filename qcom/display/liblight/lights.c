@@ -19,6 +19,7 @@
 
 // #define LOG_NDEBUG 0
 
+#include <ctype.h>
 #include <log/log.h>
 #include <cutils/properties.h>
 #include <stdint.h>
@@ -335,27 +336,40 @@ set_light_keyboard(struct light_device_t* dev,
     int err = 0;
     unsigned int adj_color;
     char portable[PROPERTY_VALUE_MAX];
+    int ver;
 
     if(!dev) {
         return -1;
     }
 
     portable[PROPERTY_VALUE_MAX - 1] = 0;
+
+    if (property_get("hw.build.version.mcu", portable, 0) <= 0 || !isalnum(portable[2])) {
+        ver = 4;
+    } else {
+        ver = portable[2] - 0x30;
+    }
+
     if (property_get("persist.vendor.board.config", portable, 0) <= 0 ) {
         strncpy(portable, "portable", sizeof("portable"));
     }
 
-    if (0 != strncmp(portable, "smartcam", strlen("smartcam"))) {
+    if (0 != strncmp(portable, "smartcam", strlen("smartcam")) || 7 <= ver) {
         unsigned int color = state->color & 0x00FFFFFF;
 
-        if ( (color & 0x00FF0000) <= 0x000F0000 ) { // make sure RED > 0F
-            color |= 0x000F0000;
-        }
-        if ( (color & 0x0000FF00) <= 0x00000F00 ) { // make sure GREEN > 0F
-            color |= 0x00000F00;
-        }
-        if ( (color & 0x000000FF) <= 0x0000000F ) { // make sure BLUE > 0F
-            color |= 0x0000000F;
+        if (ver < 7) {
+            // Do this only for true color led of the enhance cradle
+            // The e-cam has single only red led
+            //
+            if ((color & 0x00FF0000) <= 0x000F0000) { // make sure RED > 0F
+                color |= 0x000F0000;
+            }
+            if ( (color & 0x0000FF00) <= 0x00000F00 ) { // make sure GREEN > 0F
+                color |= 0x00000F00;
+            }
+            if ( (color & 0x000000FF) <= 0x0000000F ) { // make sure BLUE > 0F
+                color |= 0x0000000F;
+            }
         }
 
         // the RGB part in ARGB remains the same, the A part is replaced by rgb_to_brightness

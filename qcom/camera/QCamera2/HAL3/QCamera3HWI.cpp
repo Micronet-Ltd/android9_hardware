@@ -5649,16 +5649,9 @@ QCamera3HardwareInterface::translateFromHalMetadata(
         }
     }
 
-    uint8_t fwk_hotPixelMode;
-        if (capture_intent == ANDROID_CONTROL_CAPTURE_INTENT_STILL_CAPTURE) {
-               fwk_hotPixelMode = ANDROID_HOT_PIXEL_MODE_HIGH_QUALITY;
-                   camMetadata.update(ANDROID_HOT_PIXEL_MODE, &fwk_hotPixelMode, 1);
-                    }else{
-
     IF_META_AVAILABLE(uint32_t, hotPixelMode, CAM_INTF_META_HOTPIXEL_MODE, metadata) {
-                fwk_hotPixelMode = (uint8_t) *hotPixelMode;
-                        camMetadata.update(ANDROID_HOT_PIXEL_MODE, &fwk_hotPixelMode, 1);
-                                }
+        uint8_t fwk_hotPixelMode = (uint8_t) *hotPixelMode;
+        camMetadata.update(ANDROID_HOT_PIXEL_MODE, &fwk_hotPixelMode, 1);
     }
 
     IF_META_AVAILABLE(float, lensAperture, CAM_INTF_META_LENS_APERTURE, metadata) {
@@ -5798,7 +5791,6 @@ QCamera3HardwareInterface::translateFromHalMetadata(
 #ifndef USE_HAL_3_3
     IF_META_AVAILABLE(int32_t, ispSensitivity, CAM_INTF_META_ISP_SENSITIVITY, metadata) {
         int32_t fwk_ispSensitivity = (int32_t) *ispSensitivity;
-        fwk_ispSensitivity = 100;
         camMetadata.update(ANDROID_CONTROL_POST_RAW_SENSITIVITY_BOOST, &fwk_ispSensitivity, 1);
     }
 #endif
